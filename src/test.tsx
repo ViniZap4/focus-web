@@ -39,11 +39,38 @@ const Test = () => {
 
   effect(() => {
     if (!book()) return
-     console.log("book", book()?.section("/EPUB/_preface_by_scott_chacon.xhtml"));
+    book()?.ready.then(() => {
 
-    // console.log("book", book()?.section());
-  })
+      console.log("book", book());
 
+      // console.log("book", book()?.section());
+
+      book()?.loaded.navigation.then(navigation => {
+        console.log("navigation", navigation); 
+        navigation.toc?.forEach(element => {
+          element.subitems?.forEach((subItem) => {
+
+            const section = book()?.section(subItem.id)
+            console.log("sub-section" + element.id, section);
+          })
+          const section = book()?.section(element.id)
+          console.log("section" + element.id, section);
+
+          book()?.load(section?.url|| "").then(contents => {
+            console.log("contents", contents);
+          });
+
+        });
+
+
+        return
+      });
+
+
+      console.log(book()?.section(0))
+    })
+
+  });
   return (
     <div class='container'>
       <input type="file" accept=".epub" onChange={handleFileChange} />
