@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "epubjs": "^0.3.93",
     "solid-js": "^1.8.7"
   },
   "devDependencies": {
