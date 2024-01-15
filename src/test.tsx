@@ -7,6 +7,9 @@ import { effect } from 'solid-js/web';
 
 const Test = () => {
   const [text, setText] = createSignal("");
+  const [currentSectionHtml, setCurrentSectionHtml] = createSignal("");
+
+  let divRef: HTMLDivElement | undefined;
 
   const speakOutLoud = () => {
     const speech = new SpeechSynthesisUtterance(text());
@@ -42,26 +45,25 @@ const Test = () => {
     book()?.ready.then(() => {
 
       console.log("book", book());
-
-      // console.log("book", book()?.section());
-
+      
       book()?.loaded.navigation.then(navigation => {
-        console.log("navigation", navigation); 
+        console.log("navigation", navigation);
         navigation.toc?.forEach(element => {
-          element.subitems?.forEach((subItem) => {
-
-            const section = book()?.section(subItem.id)
-            console.log("sub-section" + element.id, section);
-          })
           const section = book()?.section(element.id)
           console.log("section" + element.id, section);
 
-          book()?.load(section?.url|| "").then(contents => {
+          book()?.load(section?.url || "").then(contents => {
             console.log("contents", contents);
+            const htmlContent = contents as Node
+
+            const serializer = new XMLSerializer();
+            const sectionHtml = serializer.serializeToString(htmlContent);
+            console.log("sectionHtml", sectionHtml);
+            
+            setCurrentSectionHtml(sectionHtml);
           });
 
         });
-
 
         return
       });
@@ -72,7 +74,7 @@ const Test = () => {
 
   });
   return (
-    <div class='container'>
+    <div class='container' ref={divRef}>
       <input type="file" accept=".epub" onChange={handleFileChange} />
 
       <textarea
@@ -80,6 +82,8 @@ const Test = () => {
         onInput={(e) => setText(e.target.value)}
       />
       <button onClick={speakOutLoud}>Speech</button>
+      <div innerHTML={currentSectionHtml()} />
+
     </div>
   );
 };
