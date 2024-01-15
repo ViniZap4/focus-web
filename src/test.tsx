@@ -14,14 +14,18 @@ const Test = () => {
   const speakOutLoud = () => {
     const speech = new SpeechSynthesisUtterance(text());
     speech.lang = "en-US"
-    console.log(speech);
-    window.speechSynthesis.speak(speech);
 
     let synth = window.speechSynthesis;
     let voices = synth.getVoices();
-    console.log(voices);
 
+    console.log(voices.filter((item)=> item.lang === "en-US"));
+    
+    speech.voice = voices.filter((item)=> item.lang === "en-US")[4] 
+    console.log(voices);
+    console.log(speech);
+    window.speechSynthesis.speak(speech);
   };
+
   const [book, setBook] = createSignal<Book>();
 
   const handleFileChange = async (event: Event) => {
