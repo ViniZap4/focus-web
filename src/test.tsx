@@ -1,36 +1,44 @@
+import "./App.css";
 
-import './App.css'
-
-import Epub, { Book } from 'epubjs';
+import Epub, { Book } from "epubjs";
 import { createSignal } from "solid-js";
-import { effect } from 'solid-js/web';
+import { effect } from "solid-js/web";
 
 const Test = () => {
   const [text, setText] = createSignal("");
   const [currentSectionHtml, setCurrentSectionHtml] = createSignal("");
+  const [currentWorldIndex, setCurrentWorldIndex] = createSignal<number>(0);
 
   let divRef: HTMLDivElement | undefined;
 
   const speakOutLoud = () => {
     const speech = new SpeechSynthesisUtterance(text());
-    speech.lang = "en-US"
+    speech.lang = "pt-BR";
+    setCurrentWorldIndex(0);
 
     let synth = window.speechSynthesis;
     let voices = synth.getVoices();
 
-    console.log(voices.filter((item)=> item.lang === "en-US"));
-    
-    speech.voice = voices.filter((item)=> item.lang === "en-US")[4] 
+    console.log(voices.filter((item) => item.lang === "en-US"));
+
+    // speech.voice = voices.filter((item)=> item.lang === "en-US")[4]
+    speech.voice = voices.filter((item) => item.lang === "pt-BR")[0];
     console.log(voices);
     console.log(speech);
     window.speechSynthesis.speak(speech);
+
+    speech.addEventListener("boundary", function (e) {
+      console.log("boundary event", e);
+
+      setCurrentWorldIndex((old) => old + 1);
+    });
   };
 
   const [book, setBook] = createSignal<Book>();
 
   const handleFileChange = async (event: Event) => {
     const input = event.target as HTMLInputElement;
-    if (!input || !input.files || input.files?.length <= 0) return
+    if (!input || !input.files || input.files?.length <= 0) return;
 
     const file = input?.files[0];
     if (file) {
@@ -41,44 +49,41 @@ const Test = () => {
       };
       reader.readAsArrayBuffer(file);
     }
-
   };
 
   effect(() => {
-    if (!book()) return
+    if (!book()) return;
     book()?.ready.then(() => {
-
       console.log("book", book());
-      
-      book()?.loaded.navigation.then(navigation => {
+
+      book()?.loaded.navigation.then((navigation) => {
         console.log("navigation", navigation);
-        navigation.toc?.forEach(element => {
-          const section = book()?.section(element.id)
+        navigation.toc?.forEach((element) => {
+          const section = book()?.section(element.id);
           console.log("section" + element.id, section);
 
-          book()?.load(section?.url || "").then(contents => {
-            console.log("contents", contents);
-            const htmlContent = contents as Node
+          book()
+            ?.load(section?.url || "")
+            .then((contents) => {
+              console.log("contents", contents);
+              const htmlContent = contents as Node;
 
-            const serializer = new XMLSerializer();
-            const sectionHtml = serializer.serializeToString(htmlContent);
-            console.log("sectionHtml", sectionHtml);
-            
-            setCurrentSectionHtml(sectionHtml);
-          });
+              const serializer = new XMLSerializer();
+              const sectionHtml = serializer.serializeToString(htmlContent);
+              console.log("sectionHtml", sectionHtml);
 
+              setCurrentSectionHtml(sectionHtml);
+            });
         });
 
-        return
+        return;
       });
 
-
-      console.log(book()?.section(0))
-    })
-
+      console.log(book()?.section(0));
+    });
   });
   return (
-    <div class='container' ref={divRef}>
+    <div class="container" ref={divRef}>
       <input type="file" accept=".epub" onChange={handleFileChange} />
 
       <textarea
@@ -86,10 +91,34 @@ const Test = () => {
         onInput={(e) => setText(e.target.value)}
       />
       <button onClick={speakOutLoud}>Speech</button>
-      <div innerHTML={currentSectionHtml()} />
-
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+        }}
+      >
+        {text()
+          .split(" ")
+          .map((item, key) => {
+            console.log(item, key);
+            if (key === currentWorldIndex() - 1) {
+              return (
+                <span
+                  style={{
+                    color: "orange",
+                    scale: 1.1,
+                  }}
+                >
+                  {item}
+                </span>
+              );
+            }
+            return <span>{item}</span>;
+          })}
+        <div innerHTML={currentSectionHtml()} />
+      </div>
     </div>
   );
 };
 
-export default Test 
+export default Test;
