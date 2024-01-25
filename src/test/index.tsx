@@ -1,4 +1,4 @@
-import "./App.css";
+import "../App.css";
 
 import Epub, { Book } from "epubjs";
 import { createSignal } from "solid-js";
@@ -22,7 +22,7 @@ const Test = () => {
     console.log(voices.filter((item) => item.lang === "en-US"));
 
     // speech.voice = voices.filter((item)=> item.lang === "en-US")[4]
-    speech.voice = voices.filter((item) => item.lang === "pt-BR")[0];
+    speech.voice = voices.filter((item) => item.lang === "en-US")[0];
     console.log(voices);
     console.log(speech);
     window.speechSynthesis.speak(speech);
