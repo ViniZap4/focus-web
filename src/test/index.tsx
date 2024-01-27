@@ -8,12 +8,14 @@ const Test = () => {
   const [text, setText] = createSignal("");
   const [currentSectionHtml, setCurrentSectionHtml] = createSignal("");
   const [currentWorldIndex, setCurrentWorldIndex] = createSignal<number>(0);
+  const [currentSpeechTextRange, setCurrentSpeechTextRange] =
+    createSignal<number>(0);
 
   let divRef: HTMLDivElement | undefined;
 
   const speakOutLoud = () => {
     const speech = new SpeechSynthesisUtterance(text());
-    speech.lang = "pt-BR";
+    speech.lang = "en-US";
     setCurrentWorldIndex(0);
 
     let synth = window.speechSynthesis;
@@ -30,7 +32,23 @@ const Test = () => {
     speech.addEventListener("boundary", function (e) {
       console.log("boundary event", e);
 
-      setCurrentWorldIndex((old) => old + 1);
+      let start = e.charIndex;
+      let end = start + e.charLength;
+      // Exibe o texto atual sendo falado
+      const currentText = text().substring(start, end);
+      console.log("Texto atual:", currentText);
+      setCurrentSpeechTextRange(currentText.split(" ").length);
+      console.log(currentText.split(" ").length, "length of currentText");
+      setCurrentWorldIndex((old) => old + currentText.split(" ").length);
+    });
+    speech.addEventListener("error", function (e) {
+      console.log("boundary error", e);
+    });
+    speech.addEventListener("mark", function (e) {
+      console.log("boundary mark", e);
+    });
+    speech.addEventListener("mark", function (e) {
+      console.log("boundary mark", e);
     });
   };
 
@@ -59,6 +77,8 @@ const Test = () => {
       book()?.loaded.navigation.then((navigation) => {
         console.log("navigation", navigation);
         navigation.toc?.forEach((element) => {
+          console.log(element);
+
           const section = book()?.section(element.id);
           console.log("section" + element.id, section);
 
@@ -82,6 +102,17 @@ const Test = () => {
       console.log(book()?.section(0));
     });
   });
+
+  const getTextRender = () => {
+    // const textArray = text().replace(/\s+/g, " ").trim().split(/\b/);
+    const textArray = text().replace(/\s+/g, " ").trim().split(" ");
+    // .filter((word) => word.trim().length > 0);
+
+    console.log("textArray", textArray);
+
+    return textArray;
+  };
+
   return (
     <div class="container" ref={divRef}>
       <input type="file" accept=".epub" onChange={handleFileChange} />
@@ -97,24 +128,31 @@ const Test = () => {
           gap: "0.5rem",
         }}
       >
-        {text()
-          .split(" ")
-          .map((item, key) => {
-            console.log(item, key);
-            if (key === currentWorldIndex() - 1) {
-              return (
-                <span
-                  style={{
-                    color: "orange",
-                    scale: 1.1,
-                  }}
-                >
-                  {item}
-                </span>
-              );
-            }
-            return <span>{item}</span>;
-          })}
+        {getTextRender().map((item, key) => {
+          console.table([
+            { type: "item", item },
+            { type: "key", item: key },
+            { type: "currentWorldIndex", item: currentWorldIndex() },
+          ]);
+          if (
+            key === currentWorldIndex() - 1 ||
+            key === currentWorldIndex() - currentSpeechTextRange()
+          ) {
+            // if (currentSpeechText().includes(item)) {
+            return (
+              <span
+                style={{
+                  color: "orange",
+                  scale: 1.1,
+                }}
+              >
+                {item}
+              </span>
+            );
+          }
+          return <span>{item}</span>;
+        })}
+        <div class="placeholder"></div>
         <div innerHTML={currentSectionHtml()} />
       </div>
     </div>
