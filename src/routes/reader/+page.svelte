@@ -4,18 +4,25 @@
 	import { WordDisplay } from '../../blocks/Reader/WordDisplay';
 	import { FloatBar } from '../../blocks/Reader/FloatBar';
 	import { Settings } from '../../blocks/Settings';
+	import { ImageViewer } from '../../blocks/ImageViewer';
 	import { onMount } from 'svelte';
+
+	let ready = $state(false);
 
 	onMount(() => {
 		if (!reader.text) {
 			goto('/');
 			return;
 		}
+		// Small delay for entrance animation
+		requestAnimationFrame(() => {
+			ready = true;
+		});
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
-		// Don't capture when typing in inputs
 		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+		if (e.target instanceof HTMLSelectElement) return;
 
 		switch (e.key) {
 			case 'ArrowRight':
@@ -31,7 +38,6 @@
 				break;
 			case 'ArrowDown': {
 				e.preventDefault();
-				// Jump to first word of next line
 				const nextLine = reader.currentLineIndex + 1;
 				const target = reader.lines[nextLine];
 				if (target) reader.jumpToWord(target.words[0].globalIndex);
@@ -39,7 +45,6 @@
 			}
 			case 'ArrowUp': {
 				e.preventDefault();
-				// Jump to first word of previous line
 				const prevLine = reader.currentLineIndex - 1;
 				const target2 = reader.lines[prevLine];
 				if (target2) reader.jumpToWord(target2.words[0].globalIndex);
@@ -59,7 +64,9 @@
 				break;
 			case 'Escape':
 				e.preventDefault();
-				if (reader.showSettings) {
+				if (reader.activeMedia) {
+					reader.dismissMedia();
+				} else if (reader.showSettings) {
 					reader.toggleSettings();
 				}
 				break;
@@ -70,7 +77,21 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if reader.text}
-	<WordDisplay />
-	<FloatBar />
-	<Settings />
+	<div class="reader" class:ready>
+		<WordDisplay />
+		<FloatBar />
+		<Settings />
+		<ImageViewer />
+	</div>
 {/if}
+
+<style>
+	.reader {
+		opacity: 0;
+		transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.reader.ready {
+		opacity: 1;
+	}
+</style>

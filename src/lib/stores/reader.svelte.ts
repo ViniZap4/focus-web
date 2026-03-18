@@ -60,6 +60,14 @@ export interface LineToken {
 	lineIndex: number;
 }
 
+export interface MediaItem {
+	type: 'image' | 'table';
+	src?: string;
+	alt?: string;
+	rows?: string[][];
+	triggerAtWord: number;
+}
+
 export interface ReaderSettings {
 	fontFamily: string;
 	fontSize: number;
@@ -67,15 +75,19 @@ export interface ReaderSettings {
 	lineHeight: number;
 	wpm: number;
 	voice: string;
+	speechPitch: number;
+	smoothScroll: boolean;
 }
 
 const DEFAULT_SETTINGS: ReaderSettings = {
 	fontFamily: 'Inter',
-	fontSize: 36,
-	letterSpacing: 0,
-	lineHeight: 2.2,
+	fontSize: 42,
+	letterSpacing: 0.5,
+	lineHeight: 2.4,
 	wpm: 200,
-	voice: ''
+	voice: '',
+	speechPitch: 1,
+	smoothScroll: true
 };
 
 function loadSettings(): ReaderSettings {
@@ -83,7 +95,9 @@ function loadSettings(): ReaderSettings {
 	try {
 		const saved = localStorage.getItem('focus-settings');
 		if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-	} catch {}
+	} catch {
+		/* empty */
+	}
 	return { ...DEFAULT_SETTINGS };
 }
 
@@ -93,10 +107,13 @@ class ReaderState {
 	currentWord = $state(0);
 	isPlaying = $state(false);
 	isSpeaking = $state(false);
+	isPaused = $state(false);
 	showSettings = $state(false);
 	settings = $state<ReaderSettings>(loadSettings());
+	media = $state<MediaItem[]>([]);
+	activeMedia = $state<MediaItem | null>(null);
+	fileName = $state('');
 
-	private speechUtterance: SpeechSynthesisUtterance | null = null;
 	private playTimer: ReturnType<typeof setTimeout> | null = null;
 
 	lines = $derived.by((): LineToken[] => {
@@ -129,16 +146,26 @@ class ReaderState {
 	isAtEnd = $derived(this.currentWord >= this.totalWords - 1);
 	isAtStart = $derived(this.currentWord === 0);
 
-	setText(title: string, text: string) {
+	// Check for media triggers at current word
+	currentMedia = $derived.by(() => {
+		return this.media.filter(
+			(m) => m.triggerAtWord >= this.currentWord - 5 && m.triggerAtWord <= this.currentWord + 5
+		);
+	});
+
+	setText(title: string, text: string, media: MediaItem[] = []) {
 		this.title = title;
 		this.text = text;
+		this.media = media;
 		this.currentWord = 0;
+		this.activeMedia = null;
 		this.stop();
 	}
 
 	advance() {
 		if (this.currentWord < this.totalWords - 1) {
 			this.currentWord++;
+			this.checkMediaTrigger();
 		} else {
 			this.stop();
 		}
@@ -153,18 +180,55 @@ class ReaderState {
 	jumpToWord(index: number) {
 		if (index >= 0 && index < this.totalWords) {
 			this.currentWord = index;
+			this.checkMediaTrigger();
 		}
 	}
 
+	private checkMediaTrigger() {
+		const triggered = this.media.find((m) => m.triggerAtWord === this.currentWord);
+		if (triggered) {
+			this.activeMedia = triggered;
+		}
+	}
+
+	dismissMedia() {
+		this.activeMedia = null;
+	}
+
+	showMediaItem(item: MediaItem) {
+		this.activeMedia = item;
+	}
+
 	play() {
+		if (this.isPaused && this.isSpeaking) {
+			// Resume speech
+			window.speechSynthesis.resume();
+			this.isPaused = false;
+			this.isPlaying = true;
+			return;
+		}
 		this.isPlaying = true;
+		this.isPaused = false;
 		this.scheduleNext();
 		this.speak();
+	}
+
+	pause() {
+		this.isPlaying = false;
+		this.isPaused = true;
+		if (this.playTimer) {
+			clearTimeout(this.playTimer);
+			this.playTimer = null;
+		}
+		if (this.isSpeaking) {
+			window.speechSynthesis.pause();
+		}
 	}
 
 	stop() {
 		this.isPlaying = false;
 		this.isSpeaking = false;
+		this.isPaused = false;
 		if (this.playTimer) {
 			clearTimeout(this.playTimer);
 			this.playTimer = null;
@@ -176,7 +240,7 @@ class ReaderState {
 
 	toggle() {
 		if (this.isPlaying) {
-			this.stop();
+			this.pause();
 		} else {
 			this.play();
 		}
@@ -202,8 +266,13 @@ class ReaderState {
 		const remaining = allWords.slice(this.currentWord).map((w) => w.text);
 		if (remaining.length === 0) return;
 
-		const utterance = new SpeechSynthesisUtterance(remaining.join(' '));
-		utterance.rate = this.settings.wpm / 180;
+		// Split into sentences for better speech
+		const fullText = remaining.join(' ');
+		const utterance = new SpeechSynthesisUtterance(fullText);
+
+		// Map WPM to speech rate (180 wpm is roughly rate 1.0)
+		utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
+		utterance.pitch = this.settings.speechPitch;
 
 		if (this.settings.voice) {
 			const voices = window.speechSynthesis.getVoices();
@@ -216,7 +285,11 @@ class ReaderState {
 
 		utterance.onboundary = (e) => {
 			if (e.name === 'word') {
-				this.currentWord = startWord + wordOffset;
+				const newIdx = startWord + wordOffset;
+				if (newIdx < this.totalWords) {
+					this.currentWord = newIdx;
+					this.checkMediaTrigger();
+				}
 				wordOffset++;
 			}
 		};
@@ -224,10 +297,18 @@ class ReaderState {
 		utterance.onend = () => {
 			this.isSpeaking = false;
 			this.isPlaying = false;
+			this.isPaused = false;
+		};
+
+		utterance.onpause = () => {
+			this.isPaused = true;
+		};
+
+		utterance.onresume = () => {
+			this.isPaused = false;
 		};
 
 		this.isSpeaking = true;
-		this.speechUtterance = utterance;
 		window.speechSynthesis.speak(utterance);
 	}
 
@@ -245,6 +326,9 @@ class ReaderState {
 		this.text = '';
 		this.title = '';
 		this.currentWord = 0;
+		this.media = [];
+		this.activeMedia = null;
+		this.fileName = '';
 	}
 }
 
