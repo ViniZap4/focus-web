@@ -1,55 +1,53 @@
 <script lang="ts">
 	import { reader } from '$lib/stores';
-	import { tick } from 'svelte';
 
 	let containerEl: HTMLDivElement | undefined = $state();
-	let scrolling = $state(false);
+	let scrollRAF = 0;
+
+	// ── Scroll: keep active word centered ─────────────────────────────────
+	//
+	// Uses requestAnimationFrame to debounce. When currentWord changes
+	// rapidly (speech), only the latest position is scrolled to.
+	// No "scrolling" flag — just cancel the previous RAF.
 
 	$effect(() => {
 		void reader.currentWord;
-		if (scrolling) return;
-		scrolling = true;
-		tick().then(() => {
-			if (!containerEl) {
-				scrolling = false;
-				return;
-			}
+
+		cancelAnimationFrame(scrollRAF);
+		scrollRAF = requestAnimationFrame(() => {
+			if (!containerEl) return;
+
 			const active = containerEl.querySelector('[data-active="true"]') as HTMLElement | null;
-			if (!active) {
-				scrolling = false;
-				return;
-			}
-			const containerRect = containerEl.getBoundingClientRect();
-			const activeRect = active.getBoundingClientRect();
-			const offset =
-				activeRect.top -
-				containerRect.top -
-				containerRect.height / 2 +
-				activeRect.height / 2;
+			if (!active) return;
+
+			const containerH = containerEl.clientHeight;
+			const activeTop = active.offsetTop;
+			const activeH = active.offsetHeight;
+
+			// Target: center of active word = center of container
+			const targetScroll = activeTop - containerH / 2 + activeH / 2;
 
 			containerEl.scrollTo({
-				top: containerEl.scrollTop + offset,
+				top: targetScroll,
 				behavior: reader.settings.smoothScroll ? 'smooth' : 'instant'
-			});
-
-			requestAnimationFrame(() => {
-				scrolling = false;
 			});
 		});
 	});
 
-	function wordState(
-		globalIndex: number
-	): 'active' | 'near-before' | 'near-after' | 'past' | 'future' {
+	// ── Word state classification ─────────────────────────────────────────
+	//
+	// Determines visual state based on distance from current word.
+	// Returns a CSS class string.
+
+	function wordClass(globalIndex: number): string {
 		const diff = globalIndex - reader.currentWord;
 		if (diff === 0) return 'active';
-		if (diff >= -3 && diff < 0) return 'near-before';
-		if (diff > 0 && diff <= 3) return 'near-after';
+		if (diff === -1 || diff === -2) return 'near-before';
+		if (diff === 1 || diff === 2) return 'near-after';
 		if (diff < 0) return 'past';
 		return 'future';
 	}
 
-	// Check if a media item should show an indicator at this word
 	function hasMediaAt(globalIndex: number): boolean {
 		return reader.media.some((m) => m.triggerAtWord === globalIndex);
 	}
@@ -74,9 +72,8 @@
 	{#each reader.lines as line (line.lineIndex)}
 		<div class="line">
 			{#each line.words as word (word.globalIndex)}
-				{@const state = wordState(word.globalIndex)}
 				<button
-					class="word {state}"
+					class="word {wordClass(word.globalIndex)}"
 					data-active={word.globalIndex === reader.currentWord}
 					onclick={() => {
 						reader.jumpToWord(word.globalIndex);
@@ -134,16 +131,15 @@
 		padding: 0.04em 0.06em;
 		border-radius: 4px;
 		transition:
-			color 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-			opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-			transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-			filter 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+			color 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+			transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+			filter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.word.active {
 		color: white;
 		transform: scale(1.08);
-		filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));
+		filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.12));
 	}
 
 	.word.near-before {
@@ -151,7 +147,7 @@
 	}
 
 	.word.near-after {
-		color: rgba(255, 255, 255, 0.18);
+		color: rgba(255, 255, 255, 0.2);
 	}
 
 	.word.past {
@@ -164,7 +160,7 @@
 
 	.word:hover:not(.active) {
 		color: rgba(255, 255, 255, 0.45);
-		transition-duration: 0.15s;
+		transition-duration: 0.12s;
 	}
 
 	.media-dot {

@@ -125,6 +125,8 @@ function loadSettings(): ReaderSettings {
 	return { ...DEFAULT_SETTINGS };
 }
 
+// ─── Reader State ────────────────────────────────────────────────────────────
+
 class ReaderState {
 	text = $state('');
 	title = $state('');
@@ -145,6 +147,8 @@ class ReaderState {
 	private playTimer: ReturnType<typeof setTimeout> | null = null;
 	private speechKeepAlive: ReturnType<typeof setInterval> | null = null;
 
+	// ── Derived data ──────────────────────────────────────────────────────
+
 	lines = $derived.by((): LineToken[] => {
 		const rawLines = this.text.split('\n').filter((l) => l.trim().length > 0);
 		let globalIdx = 0;
@@ -160,22 +164,28 @@ class ReaderState {
 		});
 	});
 
-	totalWords = $derived(this.lines.reduce((sum, l) => sum + l.words.length, 0));
+	/** Flat array of all words for O(1) access by globalIndex */
+	allWords = $derived(this.lines.flatMap((l) => l.words));
 
-	currentLineIndex = $derived.by(() => {
-		for (const line of this.lines) {
-			for (const w of line.words) {
-				if (w.globalIndex === this.currentWord) return w.lineIndex;
-			}
+	totalWords = $derived(this.allWords.length);
+
+	/** O(1) line lookup: wordLineMap[globalIndex] = lineIndex */
+	private wordLineMap = $derived.by(() => {
+		const map: number[] = [];
+		for (const w of this.allWords) {
+			map[w.globalIndex] = w.lineIndex;
 		}
-		return 0;
+		return map;
 	});
 
-	progress = $derived(this.totalWords > 0 ? ((this.currentWord + 1) / this.totalWords) * 100 : 0);
-	isAtEnd = $derived(this.currentWord >= this.totalWords - 1);
+	currentLineIndex = $derived(this.wordLineMap[this.currentWord] ?? 0);
+
+	progress = $derived(
+		this.totalWords > 0 ? ((this.currentWord + 1) / this.totalWords) * 100 : 0
+	);
+	isAtEnd = $derived(this.totalWords > 0 && this.currentWord >= this.totalWords - 1);
 	isAtStart = $derived(this.currentWord === 0);
 
-	// Estimated time remaining
 	etaMinutes = $derived.by(() => {
 		const remaining = this.totalWords - this.currentWord;
 		if (remaining <= 0 || this.settings.wpm <= 0) return 0;
@@ -184,60 +194,64 @@ class ReaderState {
 
 	mediaCount = $derived(this.media.length);
 
+	// ── Content loading ───────────────────────────────────────────────────
+
 	setText(title: string, text: string, media: MediaItem[] = [], lang?: string) {
+		this.stop();
 		this.title = title;
 		this.text = text;
 		this.media = media;
 		this.currentWord = 0;
 		this.activeMedia = null;
-		this.stop();
 
-		// Detect language
 		if (lang) {
 			this.detectedLang = lang;
+			this.isRtl = false;
 		} else if (this.settings.autoDetectLang && text.length > 0) {
 			const result = detectLanguage(text);
 			this.detectedLang = result.code;
 			this.isRtl = result.isRtl;
 		}
 
-		// Auto-select voice for detected language
 		if (this.settings.autoDetectLang && typeof window !== 'undefined') {
 			const voices = window.speechSynthesis.getVoices();
 			if (voices.length > 0 && !this.settings.voice) {
 				const best = getBestVoice(voices, this.detectedLang);
-				if (best) {
-					this.settings.voice = best.name;
-				}
+				if (best) this.settings.voice = best.name;
 			}
 		}
 	}
 
+	// ── Navigation (user-driven) ──────────────────────────────────────────
+	//
+	// These are called by user actions: keyboard, click, scrub.
+	// If speech is active, they restart speech from the new position so
+	// the audio stays in sync with the visual focus.
+
 	advance() {
-		if (this.currentWord < this.totalWords - 1) {
-			this.currentWord++;
-			this.checkMediaTrigger();
-		} else {
-			this.stop();
-		}
+		if (this.currentWord >= this.totalWords - 1) return;
+		this.currentWord++;
+		this.checkMediaTrigger();
+		if (this.isSpeaking) this.restartSpeechFromCurrent();
 	}
 
 	goBack() {
-		if (this.currentWord > 0) {
-			this.currentWord--;
-		}
+		if (this.currentWord <= 0) return;
+		this.currentWord--;
+		if (this.isSpeaking) this.restartSpeechFromCurrent();
 	}
 
 	jumpToWord(index: number) {
-		if (index >= 0 && index < this.totalWords) {
-			this.currentWord = index;
-			this.checkMediaTrigger();
-		}
+		if (index < 0 || index >= this.totalWords || index === this.currentWord) return;
+		this.currentWord = index;
+		this.checkMediaTrigger();
+		if (this.isSpeaking) this.restartSpeechFromCurrent();
 	}
 
 	jumpToPercent(pct: number) {
-		const idx = Math.floor((pct / 100) * (this.totalWords - 1));
-		this.jumpToWord(Math.max(0, Math.min(idx, this.totalWords - 1)));
+		const maxIdx = Math.max(0, this.totalWords - 1);
+		const idx = Math.round((pct / 100) * maxIdx);
+		this.jumpToWord(Math.max(0, Math.min(idx, maxIdx)));
 	}
 
 	restart() {
@@ -245,11 +259,11 @@ class ReaderState {
 		this.currentWord = 0;
 	}
 
+	// ── Media ─────────────────────────────────────────────────────────────
+
 	private checkMediaTrigger() {
 		const triggered = this.media.find((m) => m.triggerAtWord === this.currentWord);
-		if (triggered) {
-			this.activeMedia = triggered;
-		}
+		if (triggered) this.activeMedia = triggered;
 	}
 
 	dismissMedia() {
@@ -260,27 +274,40 @@ class ReaderState {
 		this.activeMedia = item;
 	}
 
+	// ── Playback ──────────────────────────────────────────────────────────
+	//
+	// Architecture:
+	// - play() tries speech first. Speech boundary events drive currentWord.
+	// - If speech is unavailable, a WPM-based timer drives currentWord instead.
+	// - Speech and timer NEVER run simultaneously.
+
 	play() {
+		// Resume from pause
 		if (this.isPaused && this.isSpeaking) {
-			window.speechSynthesis.resume();
+			if (typeof window !== 'undefined') window.speechSynthesis.resume();
 			this.isPaused = false;
 			this.isPlaying = true;
 			return;
 		}
+
 		this.isPlaying = true;
 		this.isPaused = false;
-		this.speak();
-		this.scheduleNext();
+		this.clearTimer();
+
+		// Try speech. If it starts, speech drives word position.
+		this.startSpeech();
+
+		// Fallback: if speech didn't start, use timer.
+		if (!this.isSpeaking) {
+			this.scheduleNext();
+		}
 	}
 
 	pause() {
 		this.isPlaying = false;
 		this.isPaused = true;
-		if (this.playTimer) {
-			clearTimeout(this.playTimer);
-			this.playTimer = null;
-		}
-		if (this.isSpeaking) {
+		this.clearTimer();
+		if (this.isSpeaking && typeof window !== 'undefined') {
 			window.speechSynthesis.pause();
 		}
 	}
@@ -289,73 +316,115 @@ class ReaderState {
 		this.isPlaying = false;
 		this.isSpeaking = false;
 		this.isPaused = false;
-		if (this.playTimer) {
-			clearTimeout(this.playTimer);
-			this.playTimer = null;
-		}
-		if (this.speechKeepAlive) {
-			clearInterval(this.speechKeepAlive);
-			this.speechKeepAlive = null;
-		}
+		this.clearTimer();
+		this.clearKeepAlive();
 		if (typeof window !== 'undefined') {
 			window.speechSynthesis.cancel();
 		}
 	}
 
 	toggle() {
-		if (this.isPlaying) {
-			this.pause();
-		} else {
-			this.play();
-		}
+		if (this.isPlaying) this.pause();
+		else this.play();
 	}
 
 	/** Restart speech with current settings (e.g. after voice change) */
 	restartSpeech() {
-		if (this.isSpeaking || this.isPlaying) {
-			const wasPlaying = this.isPlaying;
-			this.stop();
-			if (wasPlaying) {
-				this.play();
-			}
+		if (!this.isPlaying) return;
+		this.stopSpeechOnly();
+		this.startSpeech();
+		if (!this.isSpeaking) this.scheduleNext();
+	}
+
+	// ── Timer (fallback when speech is unavailable) ───────────────────────
+
+	private clearTimer() {
+		if (this.playTimer) {
+			clearTimeout(this.playTimer);
+			this.playTimer = null;
 		}
 	}
 
 	private scheduleNext() {
-		if (!this.isPlaying) return;
+		this.clearTimer();
+		if (!this.isPlaying || this.isSpeaking) return;
 		const ms = (60 / this.settings.wpm) * 1000;
 		this.playTimer = setTimeout(() => {
-			if (!this.isPlaying) return;
-			this.advance();
-			if (!this.isAtEnd) {
+			if (!this.isPlaying || this.isSpeaking) return;
+			if (this.currentWord < this.totalWords - 1) {
+				this.currentWord++;
+				this.checkMediaTrigger();
 				this.scheduleNext();
+			} else {
+				this.stop();
 			}
 		}, ms);
 	}
 
-	speak() {
+	// ── Speech ────────────────────────────────────────────────────────────
+
+	private clearKeepAlive() {
+		if (this.speechKeepAlive) {
+			clearInterval(this.speechKeepAlive);
+			this.speechKeepAlive = null;
+		}
+	}
+
+	private stopSpeechOnly() {
+		this.isSpeaking = false;
+		this.clearKeepAlive();
+		if (typeof window !== 'undefined') window.speechSynthesis.cancel();
+	}
+
+	private restartSpeechFromCurrent() {
+		this.stopSpeechOnly();
+		if (this.isPlaying) {
+			this.startSpeech();
+			if (!this.isSpeaking) this.scheduleNext();
+		}
+	}
+
+	private startSpeech() {
 		if (typeof window === 'undefined') return;
+		if (!window.speechSynthesis) return;
+
 		window.speechSynthesis.cancel();
 
-		const allWords = this.lines.flatMap((l) => l.words);
-		const remaining = allWords.slice(this.currentWord).map((w) => w.text);
-		if (remaining.length === 0) return;
+		const wordsFromCurrent = this.allWords.slice(this.currentWord);
+		if (wordsFromCurrent.length === 0) return;
 
-		// Chunk text into sentences for better speech quality
-		const chunks = chunkText(remaining.join(' '), 200);
-		let chunkIndex = 0;
-		let globalWordOffset = 0;
-		const startWord = this.currentWord;
+		// Build the full text and a char-offset → globalIndex map.
+		// This is the single source of truth for word tracking.
+		const wordTexts = wordsFromCurrent.map((w) => w.text);
+		const fullText = wordTexts.join(' ');
 
-		const speakChunk = () => {
-			if (chunkIndex >= chunks.length || !this.isPlaying) {
+		// charOffsets[i] = character index where word i starts in fullText
+		const charOffsets: number[] = [];
+		let pos = 0;
+		for (const wt of wordTexts) {
+			charOffsets.push(pos);
+			pos += wt.length + 1; // +1 for space separator
+		}
+
+		const baseGlobalIndex = this.currentWord;
+
+		// Chunk into sentences for better speech quality.
+		// But track the word offset for each chunk precisely.
+		const chunks = buildChunks(fullText, charOffsets, 200);
+
+		let chunkIdx = 0;
+
+		const speakNextChunk = () => {
+			if (chunkIdx >= chunks.length || !this.isPlaying) {
 				this.isSpeaking = false;
+				this.clearKeepAlive();
+				// If still playing but speech ended, fall back to timer
+				if (this.isPlaying && this.isAtEnd) this.stop();
 				return;
 			}
 
-			const chunk = chunks[chunkIndex];
-			const utterance = new SpeechSynthesisUtterance(chunk);
-
+			const chunk = chunks[chunkIdx];
+			const utterance = new SpeechSynthesisUtterance(chunk.text);
 			utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
 			utterance.pitch = this.settings.speechPitch;
 			utterance.lang = this.detectedLang;
@@ -366,34 +435,42 @@ class ReaderState {
 				if (found) utterance.voice = found;
 			}
 
-			const chunkStartOffset = globalWordOffset;
-
 			utterance.onboundary = (e) => {
-				if (e.name === 'word') {
-					// Count words in the chunk up to charIndex
-					const textBefore = chunk.slice(0, e.charIndex);
-					const wordsBeforeCount = textBefore.split(/\s+/).filter((w) => w.length > 0).length;
-					const newIdx = startWord + chunkStartOffset + wordsBeforeCount;
-					if (newIdx < this.totalWords) {
-						this.currentWord = newIdx;
-						this.checkMediaTrigger();
+				if (e.name !== 'word' || !this.isPlaying) return;
+
+				// e.charIndex is relative to this chunk's text.
+				// Find which word in the chunk this corresponds to.
+				const absCharIdx = e.charIndex;
+				let wordInChunk = 0;
+				for (let i = chunk.wordCharOffsets.length - 1; i >= 0; i--) {
+					if (absCharIdx >= chunk.wordCharOffsets[i]) {
+						wordInChunk = i;
+						break;
 					}
+				}
+
+				const globalIdx = baseGlobalIndex + chunk.firstWordOffset + wordInChunk;
+				if (globalIdx >= 0 && globalIdx < this.totalWords) {
+					// Direct assignment — no jumpToWord() to avoid restarting speech
+					this.currentWord = globalIdx;
 				}
 			};
 
 			utterance.onend = () => {
-				globalWordOffset += chunk.split(/\s+/).filter((w) => w.length > 0).length;
-				chunkIndex++;
+				chunkIdx++;
 				if (this.isPlaying) {
-					speakChunk();
+					speakNextChunk();
 				} else {
 					this.isSpeaking = false;
+					this.clearKeepAlive();
 				}
 			};
 
 			utterance.onerror = () => {
 				this.isSpeaking = false;
-				this.isPlaying = false;
+				this.clearKeepAlive();
+				// Fall back to timer
+				if (this.isPlaying) this.scheduleNext();
 			};
 
 			window.speechSynthesis.speak(utterance);
@@ -401,17 +478,23 @@ class ReaderState {
 
 		this.isSpeaking = true;
 
-		// Chrome bug workaround: speech synthesis pauses after ~15s
-		// Keep it alive with periodic resume calls
+		// Chrome workaround: speech pauses after ~15s without interaction
+		this.clearKeepAlive();
 		this.speechKeepAlive = setInterval(() => {
-			if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+			if (
+				typeof window !== 'undefined' &&
+				window.speechSynthesis.speaking &&
+				!window.speechSynthesis.paused
+			) {
 				window.speechSynthesis.pause();
 				window.speechSynthesis.resume();
 			}
 		}, 10000);
 
-		speakChunk();
+		speakNextChunk();
 	}
+
+	// ── Settings ──────────────────────────────────────────────────────────
 
 	saveSettings() {
 		if (typeof window === 'undefined') return;
@@ -435,28 +518,81 @@ class ReaderState {
 	}
 }
 
-/**
- * Split text into chunks at sentence boundaries for better speech quality.
- */
-function chunkText(text: string, maxWords: number): string[] {
-	const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
-	const chunks: string[] = [];
-	let current = '';
-	let wordCount = 0;
+// ─── Speech chunk builder ────────────────────────────────────────────────────
+//
+// Splits text into chunks at sentence boundaries while keeping a precise
+// mapping from each chunk's local word positions to the global word array.
 
-	for (const sentence of sentences) {
-		const sentenceWords = sentence.split(/\s+/).filter((w) => w.length > 0).length;
-		if (wordCount + sentenceWords > maxWords && current) {
-			chunks.push(current.trim());
-			current = '';
-			wordCount = 0;
+interface SpeechChunk {
+	text: string;
+	firstWordOffset: number; // index of this chunk's first word in the global word array
+	wordCharOffsets: number[]; // char position of each word within this chunk
+}
+
+function buildChunks(
+	fullText: string,
+	globalCharOffsets: number[],
+	maxWordsPerChunk: number
+): SpeechChunk[] {
+	const totalWords = globalCharOffsets.length;
+	if (totalWords === 0) return [];
+
+	// Find sentence boundaries (period, exclamation, question followed by space)
+	const sentenceEnds: number[] = [];
+	for (let i = 0; i < fullText.length - 1; i++) {
+		if ('.!?'.includes(fullText[i]) && fullText[i + 1] === ' ') {
+			sentenceEnds.push(i + 1); // position after the punctuation
 		}
-		current += sentence;
-		wordCount += sentenceWords;
 	}
 
-	if (current.trim()) {
-		chunks.push(current.trim());
+	const chunks: SpeechChunk[] = [];
+	let wordStart = 0;
+
+	while (wordStart < totalWords) {
+		let wordEnd = Math.min(wordStart + maxWordsPerChunk, totalWords);
+
+		// Try to break at a sentence boundary
+		if (wordEnd < totalWords) {
+			const charStart = globalCharOffsets[wordStart];
+			const charEnd = globalCharOffsets[wordEnd] ?? fullText.length;
+
+			// Find the last sentence boundary within this range
+			let bestBreak = -1;
+			for (const se of sentenceEnds) {
+				if (se > charStart && se <= charEnd) {
+					// Find which word starts after this boundary
+					for (let w = wordStart; w < wordEnd; w++) {
+						if (globalCharOffsets[w] >= se) {
+							bestBreak = w;
+							break;
+						}
+					}
+				}
+			}
+			if (bestBreak > wordStart) {
+				wordEnd = bestBreak;
+			}
+		}
+
+		// Extract chunk text
+		const chunkCharStart = globalCharOffsets[wordStart];
+		const chunkCharEnd =
+			wordEnd < totalWords ? globalCharOffsets[wordEnd] - 1 : fullText.length;
+		const chunkText = fullText.slice(chunkCharStart, chunkCharEnd).trim();
+
+		// Build local char offsets for this chunk
+		const localOffsets: number[] = [];
+		for (let w = wordStart; w < wordEnd; w++) {
+			localOffsets.push(globalCharOffsets[w] - chunkCharStart);
+		}
+
+		chunks.push({
+			text: chunkText,
+			firstWordOffset: wordStart,
+			wordCharOffsets: localOffsets
+		});
+
+		wordStart = wordEnd;
 	}
 
 	return chunks;
