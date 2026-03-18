@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, beforeNavigate } from '$app/navigation';
 	import { reader } from '$lib/stores';
 	import { WordDisplay } from '../../blocks/Reader/WordDisplay';
 	import { FloatBar } from '../../blocks/Reader/FloatBar';
 	import { Settings } from '../../blocks/Settings';
 	import { ImageViewer } from '../../blocks/ImageViewer';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
 	let ready = $state(false);
 
@@ -14,10 +14,17 @@
 			goto('/');
 			return;
 		}
-		// Small delay for entrance animation
 		requestAnimationFrame(() => {
 			ready = true;
 		});
+	});
+
+	beforeNavigate(() => {
+		reader.stop();
+	});
+
+	onDestroy(() => {
+		reader.stop();
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
