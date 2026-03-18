@@ -125,7 +125,25 @@ function loadSettings(): ReaderSettings {
 	return { ...DEFAULT_SETTINGS };
 }
 
-// ─── Reader State ────────────────────────────────────────────────────────────
+// ─── Reader ──────────────────────────────────────────────────────────────────
+//
+// Playback architecture:
+//
+//   Timer ALWAYS runs during playback as the heartbeat.
+//   Speech runs alongside (when available) and fires onboundary events.
+//
+//   When speech fires onboundary:
+//     → It sets currentWord directly and records a timestamp.
+//
+//   When timer fires:
+//     → If speech recently updated the word (within 1 interval), skip.
+//     → Otherwise, advance the word by 1.
+//
+//   This means:
+//     • Speech available + onboundary works → speech drives, timer defers.
+//     • Speech available but onboundary broken → timer takes over smoothly.
+//     • Speech unavailable → timer drives everything.
+//     • No stuck words. No dual-advancement. Always progresses.
 
 class ReaderState {
 	text = $state('');
@@ -146,8 +164,9 @@ class ReaderState {
 
 	private playTimer: ReturnType<typeof setTimeout> | null = null;
 	private speechKeepAlive: ReturnType<typeof setInterval> | null = null;
+	private lastBoundaryTime = 0; // timestamp of last speech boundary event
 
-	// ── Derived data ──────────────────────────────────────────────────────
+	// ── Derived ───────────────────────────────────────────────────────────
 
 	lines = $derived.by((): LineToken[] => {
 		const rawLines = this.text.split('\n').filter((l) => l.trim().length > 0);
@@ -164,37 +183,26 @@ class ReaderState {
 		});
 	});
 
-	/** Flat array of all words for O(1) access by globalIndex */
 	allWords = $derived(this.lines.flatMap((l) => l.words));
-
 	totalWords = $derived(this.allWords.length);
 
-	/** O(1) line lookup: wordLineMap[globalIndex] = lineIndex */
 	private wordLineMap = $derived.by(() => {
-		const map: number[] = [];
-		for (const w of this.allWords) {
-			map[w.globalIndex] = w.lineIndex;
-		}
-		return map;
+		const arr: number[] = [];
+		for (const w of this.allWords) arr[w.globalIndex] = w.lineIndex;
+		return arr;
 	});
 
 	currentLineIndex = $derived(this.wordLineMap[this.currentWord] ?? 0);
-
-	progress = $derived(
-		this.totalWords > 0 ? ((this.currentWord + 1) / this.totalWords) * 100 : 0
-	);
+	progress = $derived(this.totalWords > 0 ? ((this.currentWord + 1) / this.totalWords) * 100 : 0);
 	isAtEnd = $derived(this.totalWords > 0 && this.currentWord >= this.totalWords - 1);
 	isAtStart = $derived(this.currentWord === 0);
-
 	etaMinutes = $derived.by(() => {
-		const remaining = this.totalWords - this.currentWord;
-		if (remaining <= 0 || this.settings.wpm <= 0) return 0;
-		return Math.ceil(remaining / this.settings.wpm);
+		const r = this.totalWords - this.currentWord;
+		return r > 0 && this.settings.wpm > 0 ? Math.ceil(r / this.settings.wpm) : 0;
 	});
-
 	mediaCount = $derived(this.media.length);
 
-	// ── Content loading ───────────────────────────────────────────────────
+	// ── Load content ──────────────────────────────────────────────────────
 
 	setText(title: string, text: string, media: MediaItem[] = [], lang?: string) {
 		this.stop();
@@ -208,9 +216,9 @@ class ReaderState {
 			this.detectedLang = lang;
 			this.isRtl = false;
 		} else if (this.settings.autoDetectLang && text.length > 0) {
-			const result = detectLanguage(text);
-			this.detectedLang = result.code;
-			this.isRtl = result.isRtl;
+			const r = detectLanguage(text);
+			this.detectedLang = r.code;
+			this.isRtl = r.isRtl;
 		}
 
 		if (this.settings.autoDetectLang && typeof window !== 'undefined') {
@@ -222,36 +230,34 @@ class ReaderState {
 		}
 	}
 
-	// ── Navigation (user-driven) ──────────────────────────────────────────
+	// ── User navigation ───────────────────────────────────────────────────
 	//
-	// These are called by user actions: keyboard, click, scrub.
-	// If speech is active, they restart speech from the new position so
-	// the audio stays in sync with the visual focus.
+	// Every user action that moves the word also restarts speech from that
+	// position (if speech is running), so audio stays in sync.
 
 	advance() {
 		if (this.currentWord >= this.totalWords - 1) return;
 		this.currentWord++;
 		this.checkMediaTrigger();
-		if (this.isSpeaking) this.restartSpeechFromCurrent();
+		if (this.isSpeaking) this.seekSpeech();
 	}
 
 	goBack() {
 		if (this.currentWord <= 0) return;
 		this.currentWord--;
-		if (this.isSpeaking) this.restartSpeechFromCurrent();
+		if (this.isSpeaking) this.seekSpeech();
 	}
 
 	jumpToWord(index: number) {
 		if (index < 0 || index >= this.totalWords || index === this.currentWord) return;
 		this.currentWord = index;
 		this.checkMediaTrigger();
-		if (this.isSpeaking) this.restartSpeechFromCurrent();
+		if (this.isSpeaking) this.seekSpeech();
 	}
 
 	jumpToPercent(pct: number) {
-		const maxIdx = Math.max(0, this.totalWords - 1);
-		const idx = Math.round((pct / 100) * maxIdx);
-		this.jumpToWord(Math.max(0, Math.min(idx, maxIdx)));
+		const max = Math.max(0, this.totalWords - 1);
+		this.jumpToWord(Math.round((pct / 100) * max));
 	}
 
 	restart() {
@@ -262,45 +268,34 @@ class ReaderState {
 	// ── Media ─────────────────────────────────────────────────────────────
 
 	private checkMediaTrigger() {
-		const triggered = this.media.find((m) => m.triggerAtWord === this.currentWord);
-		if (triggered) this.activeMedia = triggered;
+		const t = this.media.find((m) => m.triggerAtWord === this.currentWord);
+		if (t) this.activeMedia = t;
 	}
 
 	dismissMedia() {
 		this.activeMedia = null;
 	}
-
 	showMediaItem(item: MediaItem) {
 		this.activeMedia = item;
 	}
 
-	// ── Playback ──────────────────────────────────────────────────────────
-	//
-	// Architecture:
-	// - play() tries speech first. Speech boundary events drive currentWord.
-	// - If speech is unavailable, a WPM-based timer drives currentWord instead.
-	// - Speech and timer NEVER run simultaneously.
+	// ── Playback control ──────────────────────────────────────────────────
 
 	play() {
-		// Resume from pause
 		if (this.isPaused && this.isSpeaking) {
 			if (typeof window !== 'undefined') window.speechSynthesis.resume();
 			this.isPaused = false;
 			this.isPlaying = true;
+			this.startTimer();
 			return;
 		}
 
 		this.isPlaying = true;
 		this.isPaused = false;
-		this.clearTimer();
+		this.lastBoundaryTime = 0;
 
-		// Try speech. If it starts, speech drives word position.
 		this.startSpeech();
-
-		// Fallback: if speech didn't start, use timer.
-		if (!this.isSpeaking) {
-			this.scheduleNext();
-		}
+		this.startTimer(); // always start — defers to speech when boundary fires
 	}
 
 	pause() {
@@ -316,27 +311,27 @@ class ReaderState {
 		this.isPlaying = false;
 		this.isSpeaking = false;
 		this.isPaused = false;
+		this.lastBoundaryTime = 0;
 		this.clearTimer();
 		this.clearKeepAlive();
-		if (typeof window !== 'undefined') {
-			window.speechSynthesis.cancel();
-		}
+		if (typeof window !== 'undefined') window.speechSynthesis.cancel();
 	}
 
 	toggle() {
-		if (this.isPlaying) this.pause();
-		else this.play();
+		this.isPlaying ? this.pause() : this.play();
 	}
 
-	/** Restart speech with current settings (e.g. after voice change) */
 	restartSpeech() {
 		if (!this.isPlaying) return;
-		this.stopSpeechOnly();
+		this.cancelSpeech();
+		this.lastBoundaryTime = 0;
 		this.startSpeech();
-		if (!this.isSpeaking) this.scheduleNext();
 	}
 
-	// ── Timer (fallback when speech is unavailable) ───────────────────────
+	// ── Timer ─────────────────────────────────────────────────────────────
+	//
+	// Runs every WPM interval. If speech boundary fired recently,
+	// the timer skips its tick (lets speech drive). Otherwise advances.
 
 	private clearTimer() {
 		if (this.playTimer) {
@@ -345,16 +340,27 @@ class ReaderState {
 		}
 	}
 
-	private scheduleNext() {
+	private startTimer() {
 		this.clearTimer();
-		if (!this.isPlaying || this.isSpeaking) return;
+		if (!this.isPlaying) return;
+
 		const ms = (60 / this.settings.wpm) * 1000;
+
 		this.playTimer = setTimeout(() => {
-			if (!this.isPlaying || this.isSpeaking) return;
+			if (!this.isPlaying) return;
+
+			// Defer to speech if it updated recently
+			const elapsed = Date.now() - this.lastBoundaryTime;
+			if (this.isSpeaking && this.lastBoundaryTime > 0 && elapsed < ms * 0.9) {
+				this.startTimer();
+				return;
+			}
+
+			// Advance word
 			if (this.currentWord < this.totalWords - 1) {
 				this.currentWord++;
 				this.checkMediaTrigger();
-				this.scheduleNext();
+				this.startTimer();
 			} else {
 				this.stop();
 			}
@@ -370,115 +376,89 @@ class ReaderState {
 		}
 	}
 
-	private stopSpeechOnly() {
+	private cancelSpeech() {
 		this.isSpeaking = false;
 		this.clearKeepAlive();
 		if (typeof window !== 'undefined') window.speechSynthesis.cancel();
 	}
 
-	private restartSpeechFromCurrent() {
-		this.stopSpeechOnly();
-		if (this.isPlaying) {
-			this.startSpeech();
-			if (!this.isSpeaking) this.scheduleNext();
-		}
+	/** Seek: cancel current speech, restart from currentWord */
+	private seekSpeech() {
+		this.cancelSpeech();
+		this.lastBoundaryTime = 0;
+		if (this.isPlaying) this.startSpeech();
 	}
 
 	private startSpeech() {
-		if (typeof window === 'undefined') return;
-		if (!window.speechSynthesis) return;
+		if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
 		window.speechSynthesis.cancel();
 
-		const wordsFromCurrent = this.allWords.slice(this.currentWord);
-		if (wordsFromCurrent.length === 0) return;
+		const words = this.allWords.slice(this.currentWord);
+		if (words.length === 0) return;
 
-		// Build the full text and a char-offset → globalIndex map.
-		// This is the single source of truth for word tracking.
-		const wordTexts = wordsFromCurrent.map((w) => w.text);
-		const fullText = wordTexts.join(' ');
+		const baseIdx = this.currentWord;
+		const wordTexts = words.map((w) => w.text);
+		const text = wordTexts.join(' ');
 
-		// charOffsets[i] = character index where word i starts in fullText
-		const charOffsets: number[] = [];
+		// Build charOffset→wordIndex map: charStarts[i] = char position of word i
+		const charStarts: number[] = [];
 		let pos = 0;
 		for (const wt of wordTexts) {
-			charOffsets.push(pos);
-			pos += wt.length + 1; // +1 for space separator
+			charStarts.push(pos);
+			pos += wt.length + 1;
 		}
 
-		const baseGlobalIndex = this.currentWord;
+		const utterance = new SpeechSynthesisUtterance(text);
+		utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
+		utterance.pitch = this.settings.speechPitch;
+		utterance.lang = this.detectedLang;
 
-		// Chunk into sentences for better speech quality.
-		// But track the word offset for each chunk precisely.
-		const chunks = buildChunks(fullText, charOffsets, 200);
+		if (this.settings.voice) {
+			const voices = window.speechSynthesis.getVoices();
+			const v = voices.find((v) => v.name === this.settings.voice);
+			if (v) utterance.voice = v;
+		}
 
-		let chunkIdx = 0;
+		utterance.onboundary = (e) => {
+			if (e.name !== 'word' || !this.isPlaying) return;
 
-		const speakNextChunk = () => {
-			if (chunkIdx >= chunks.length || !this.isPlaying) {
-				this.isSpeaking = false;
-				this.clearKeepAlive();
-				// If still playing but speech ended, fall back to timer
-				if (this.isPlaying && this.isAtEnd) this.stop();
-				return;
-			}
-
-			const chunk = chunks[chunkIdx];
-			const utterance = new SpeechSynthesisUtterance(chunk.text);
-			utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
-			utterance.pitch = this.settings.speechPitch;
-			utterance.lang = this.detectedLang;
-
-			if (this.settings.voice) {
-				const voices = window.speechSynthesis.getVoices();
-				const found = voices.find((v) => v.name === this.settings.voice);
-				if (found) utterance.voice = found;
-			}
-
-			utterance.onboundary = (e) => {
-				if (e.name !== 'word' || !this.isPlaying) return;
-
-				// e.charIndex is relative to this chunk's text.
-				// Find which word in the chunk this corresponds to.
-				const absCharIdx = e.charIndex;
-				let wordInChunk = 0;
-				for (let i = chunk.wordCharOffsets.length - 1; i >= 0; i--) {
-					if (absCharIdx >= chunk.wordCharOffsets[i]) {
-						wordInChunk = i;
-						break;
-					}
-				}
-
-				const globalIdx = baseGlobalIndex + chunk.firstWordOffset + wordInChunk;
-				if (globalIdx >= 0 && globalIdx < this.totalWords) {
-					// Direct assignment — no jumpToWord() to avoid restarting speech
-					this.currentWord = globalIdx;
-				}
-			};
-
-			utterance.onend = () => {
-				chunkIdx++;
-				if (this.isPlaying) {
-					speakNextChunk();
+			// Binary search: find largest i where charStarts[i] <= e.charIndex
+			let lo = 0;
+			let hi = charStarts.length - 1;
+			let wordIdx = 0;
+			while (lo <= hi) {
+				const mid = (lo + hi) >> 1;
+				if (charStarts[mid] <= e.charIndex) {
+					wordIdx = mid;
+					lo = mid + 1;
 				} else {
-					this.isSpeaking = false;
-					this.clearKeepAlive();
+					hi = mid - 1;
 				}
-			};
+			}
 
-			utterance.onerror = () => {
-				this.isSpeaking = false;
-				this.clearKeepAlive();
-				// Fall back to timer
-				if (this.isPlaying) this.scheduleNext();
-			};
+			const globalIdx = baseIdx + wordIdx;
+			if (globalIdx >= 0 && globalIdx < this.totalWords) {
+				this.currentWord = globalIdx;
+				this.lastBoundaryTime = Date.now();
+			}
+		};
 
-			window.speechSynthesis.speak(utterance);
+		utterance.onend = () => {
+			this.isSpeaking = false;
+			this.clearKeepAlive();
+			// Timer is still running — it'll either advance remaining words or stop
+		};
+
+		utterance.onerror = () => {
+			this.isSpeaking = false;
+			this.clearKeepAlive();
+			// Timer continues as fallback
 		};
 
 		this.isSpeaking = true;
 
-		// Chrome workaround: speech pauses after ~15s without interaction
+		// Chrome workaround: speech hangs after ~15s
 		this.clearKeepAlive();
 		this.speechKeepAlive = setInterval(() => {
 			if (
@@ -491,7 +471,7 @@ class ReaderState {
 			}
 		}, 10000);
 
-		speakNextChunk();
+		window.speechSynthesis.speak(utterance);
 	}
 
 	// ── Settings ──────────────────────────────────────────────────────────
@@ -516,86 +496,6 @@ class ReaderState {
 		this.parseProgress = 0;
 		this.isParsing = false;
 	}
-}
-
-// ─── Speech chunk builder ────────────────────────────────────────────────────
-//
-// Splits text into chunks at sentence boundaries while keeping a precise
-// mapping from each chunk's local word positions to the global word array.
-
-interface SpeechChunk {
-	text: string;
-	firstWordOffset: number; // index of this chunk's first word in the global word array
-	wordCharOffsets: number[]; // char position of each word within this chunk
-}
-
-function buildChunks(
-	fullText: string,
-	globalCharOffsets: number[],
-	maxWordsPerChunk: number
-): SpeechChunk[] {
-	const totalWords = globalCharOffsets.length;
-	if (totalWords === 0) return [];
-
-	// Find sentence boundaries (period, exclamation, question followed by space)
-	const sentenceEnds: number[] = [];
-	for (let i = 0; i < fullText.length - 1; i++) {
-		if ('.!?'.includes(fullText[i]) && fullText[i + 1] === ' ') {
-			sentenceEnds.push(i + 1); // position after the punctuation
-		}
-	}
-
-	const chunks: SpeechChunk[] = [];
-	let wordStart = 0;
-
-	while (wordStart < totalWords) {
-		let wordEnd = Math.min(wordStart + maxWordsPerChunk, totalWords);
-
-		// Try to break at a sentence boundary
-		if (wordEnd < totalWords) {
-			const charStart = globalCharOffsets[wordStart];
-			const charEnd = globalCharOffsets[wordEnd] ?? fullText.length;
-
-			// Find the last sentence boundary within this range
-			let bestBreak = -1;
-			for (const se of sentenceEnds) {
-				if (se > charStart && se <= charEnd) {
-					// Find which word starts after this boundary
-					for (let w = wordStart; w < wordEnd; w++) {
-						if (globalCharOffsets[w] >= se) {
-							bestBreak = w;
-							break;
-						}
-					}
-				}
-			}
-			if (bestBreak > wordStart) {
-				wordEnd = bestBreak;
-			}
-		}
-
-		// Extract chunk text
-		const chunkCharStart = globalCharOffsets[wordStart];
-		const chunkCharEnd =
-			wordEnd < totalWords ? globalCharOffsets[wordEnd] - 1 : fullText.length;
-		const chunkText = fullText.slice(chunkCharStart, chunkCharEnd).trim();
-
-		// Build local char offsets for this chunk
-		const localOffsets: number[] = [];
-		for (let w = wordStart; w < wordEnd; w++) {
-			localOffsets.push(globalCharOffsets[w] - chunkCharStart);
-		}
-
-		chunks.push({
-			text: chunkText,
-			firstWordOffset: wordStart,
-			wordCharOffsets: localOffsets
-		});
-
-		wordStart = wordEnd;
-	}
-
-	return chunks;
 }
 
 export const reader = new ReaderState();
