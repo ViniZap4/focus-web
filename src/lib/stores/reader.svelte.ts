@@ -320,9 +320,9 @@ class ReaderState {
 
 	// ── Speech mode ───────────────────────────────────────────────────────
 	//
-	// Speech plays audio. onboundary counts "word" events to advance
-	// currentWord. No charIndex, no mapping — just a counter.
-	// If no boundary fires within 1.5s, falls back to timer.
+	// Uses charIndex from onboundary to find which of OUR words the
+	// speech engine is currently on. Forward-only guard prevents drift.
+	// Falls back to timer if onboundary never fires.
 
 	private startSpeechMode(fromWord: number) {
 		this.stopTimer();
@@ -343,10 +343,20 @@ class ReaderState {
 		this.speechGen++;
 		const gen = this.speechGen;
 		const baseWord = fromWord;
-		let boundaryCount = 0;
 		let gotFirstBoundary = false;
 
-		const text = words.map((w) => w.text).join(' ');
+		// Build utterance text and a charStart→wordIndex map
+		const wordTexts = words.map((w) => w.text);
+		const text = wordTexts.join(' ');
+
+		// charStarts[i] = character position where word i starts in `text`
+		const charStarts: number[] = [];
+		let pos = 0;
+		for (const wt of wordTexts) {
+			charStarts.push(pos);
+			pos += wt.length + 1;
+		}
+
 		const utterance = new SpeechSynthesisUtterance(text);
 		utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
 		utterance.pitch = this.settings.speechPitch;
@@ -359,27 +369,44 @@ class ReaderState {
 		}
 
 		utterance.onboundary = (e) => {
-			if (gen !== this.speechGen) return; // stale
-			if (e.name !== 'word' || !this.isPlaying) return;
+			if (gen !== this.speechGen || e.name !== 'word' || !this.isPlaying) return;
 
 			if (!gotFirstBoundary) {
 				gotFirstBoundary = true;
-				this.clearFallback(); // cancel timer fallback — speech is working
+				this.clearFallback();
 			}
 
-			const target = baseWord + boundaryCount;
-			if (target < this.totalWords) {
+			// Find closest word start to e.charIndex (search forward from current)
+			const searchFrom = Math.max(0, this.currentWord - baseWord);
+			let bestIdx = searchFrom;
+			let bestDist = Math.abs(charStarts[searchFrom] - e.charIndex);
+
+			for (let i = searchFrom + 1; i < charStarts.length; i++) {
+				const dist = Math.abs(charStarts[i] - e.charIndex);
+				if (dist < bestDist) {
+					bestDist = dist;
+					bestIdx = i;
+				}
+				if (charStarts[i] > e.charIndex + 10) break; // past the target, stop
+			}
+
+			const target = baseWord + bestIdx;
+
+			// Forward-only: never go backwards, max 4 word jump
+			if (
+				target >= this.currentWord &&
+				target <= this.currentWord + 4 &&
+				target < this.totalWords
+			) {
 				this.currentWord = target;
 				this.checkMedia();
 			}
-			boundaryCount++;
 		};
 
 		utterance.onend = () => {
 			if (gen !== this.speechGen) return;
 			this.isSpeaking = false;
 			this.clearKeepAlive();
-			// Advance to end if not already there
 			if (this.isPlaying) {
 				if (this.currentWord < this.totalWords - 1) {
 					this.currentWord = this.totalWords - 1;
@@ -408,12 +435,10 @@ class ReaderState {
 			}
 		}, 10000);
 
-		// Fallback: if no boundary fires within 1.5s, switch to timer
+		// Fallback: if no boundary fires within 1.5s, use timer
 		this.fallbackTimeout = setTimeout(() => {
 			if (gen !== this.speechGen) return;
 			if (!gotFirstBoundary && this.isPlaying) {
-				// onboundary isn't working for this voice — use timer instead
-				// Keep speech playing for audio, but timer drives highlighting
 				this.startTimerMode();
 			}
 		}, 1500);

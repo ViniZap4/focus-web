@@ -1,78 +1,85 @@
 <script lang="ts">
 	import { reader } from '$lib/stores';
 
-	let container: HTMLDivElement | undefined = $state();
-	let cursor: HTMLDivElement | undefined = $state();
+	let viewport: HTMLDivElement | undefined = $state();
+	let cursorEl: HTMLDivElement | undefined = $state();
 	let raf = 0;
 
-	// Scroll active word to center + position the cursor indicator
 	$effect(() => {
 		void reader.currentWord;
 
 		cancelAnimationFrame(raf);
 		raf = requestAnimationFrame(() => {
-			if (!container) return;
+			if (!viewport) return;
 
-			const el = container.querySelector('[data-active]') as HTMLElement | null;
+			const el = viewport.querySelector('[data-active]') as HTMLElement | null;
 			if (!el) return;
 
-			// Center scroll
-			const cRect = container.getBoundingClientRect();
-			const eRect = el.getBoundingClientRect();
-			const delta = eRect.top + eRect.height / 2 - (cRect.top + cRect.height / 2);
+			const vRect = viewport.getBoundingClientRect();
+			const wRect = el.getBoundingClientRect();
 
-			container.scrollTo({
-				top: container.scrollTop + delta,
+			// ── Scroll: center active word ────────────────────────
+			const delta = wRect.top + wRect.height / 2 - (vRect.top + vRect.height / 2);
+			viewport.scrollTo({
+				top: viewport.scrollTop + delta,
 				behavior: reader.isPlaying ? 'instant' : 'smooth'
 			});
 
-			// Move cursor indicator to follow active word
-			if (cursor) {
-				const pad = 6;
-				cursor.style.top = `${el.offsetTop - pad}px`;
-				cursor.style.left = `${el.offsetLeft - pad}px`;
-				cursor.style.width = `${el.offsetWidth + pad * 2}px`;
-				cursor.style.height = `${el.offsetHeight + pad * 2}px`;
-				cursor.style.opacity = '1';
+			// ── Cursor: position in document-flow space ──────────
+			// wRect is visual, add scrollTop to get absolute position
+			if (cursorEl) {
+				const pad = 8;
+				const docTop = wRect.top - vRect.top + viewport.scrollTop;
+				const docLeft = wRect.left - vRect.left + viewport.scrollLeft;
+
+				cursorEl.style.transform = `translate(${docLeft - pad}px, ${docTop - pad}px)`;
+				cursorEl.style.width = `${wRect.width + pad * 2}px`;
+				cursorEl.style.height = `${wRect.height + pad * 2}px`;
+				cursorEl.style.opacity = '1';
 			}
 		});
 	});
 
-	// Classify lines by distance from active line
-	function lineDist(lineIndex: number): number {
+	function ld(lineIndex: number): number {
 		return Math.abs(lineIndex - reader.currentLineIndex);
+	}
+
+	function lineOpacity(lineIndex: number): number {
+		const d = ld(lineIndex);
+		if (d === 0) return 1;
+		if (d === 1) return 0.45;
+		if (d === 2) return 0.2;
+		if (d === 3) return 0.08;
+		return 0;
 	}
 </script>
 
 <div
-	bind:this={container}
-	class="reader-viewport"
+	bind:this={viewport}
+	class="vp"
 	style="font-family:'{reader.settings.fontFamily}',system-ui,sans-serif;font-size:{reader.settings.fontSize}px;letter-spacing:{reader.settings.letterSpacing}px;line-height:{reader.settings.lineHeight}"
 >
-	<!-- Cursor: rounded pill that follows the active word -->
-	<div bind:this={cursor} class="cursor"></div>
+	<!-- Cursor pill -->
+	<div bind:this={cursorEl} class="cursor"></div>
 
 	<div class="pad"></div>
 
 	{#each reader.lines as line (line.lineIndex)}
-		{@const ld = lineDist(line.lineIndex)}
 		<div
 			class="line"
-			class:hide={ld > 3}
-			style={ld <= 3 ? `opacity:${ld === 0 ? 1 : ld === 1 ? 0.5 : ld === 2 ? 0.25 : 0.1}` : ''}
+			style="opacity:{lineOpacity(line.lineIndex)};{ld(line.lineIndex) > 3 ? 'pointer-events:none' : ''}"
 		>
 			{#each line.words as w (w.globalIndex)}
 				{@const d = w.globalIndex - reader.currentWord}
 				<button
-					class="word"
+					class="w"
 					class:active={d === 0}
-					class:near={d !== 0 && d >= -3 && d <= 3}
-					class:past={d < -3}
-					class:future={d > 3}
+					class:near={d !== 0 && d >= -4 && d <= 4}
+					class:dim={d < -4 || d > 4}
 					data-active={d === 0 ? '' : undefined}
 					onclick={() => {
 						reader.jumpToWord(w.globalIndex);
-						const m = reader.media.find((m) => m.triggerAtWord === w.globalIndex);
+						const m = reader.media.find((x) => x.triggerAtWord === w.globalIndex);
 						if (m) reader.showMediaItem(m);
 					}}
 				>
@@ -85,12 +92,12 @@
 	<div class="pad"></div>
 </div>
 
-<!-- Top + bottom gradient masks -->
-<div class="gradient-top"></div>
-<div class="gradient-bottom"></div>
+<!-- Gradient masks -->
+<div class="mask mask-top"></div>
+<div class="mask mask-bottom"></div>
 
 <style>
-	.reader-viewport {
+	.vp {
 		position: fixed;
 		inset: 0;
 		overflow-y: auto;
@@ -99,55 +106,51 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: flex-start;
 		padding: 0 2rem;
 		background: #1a1a1a;
 	}
-	.reader-viewport::-webkit-scrollbar { display: none; }
+	.vp::-webkit-scrollbar { display: none; }
 
 	.pad { flex: 0 0 50vh; }
 
-	/* ── Cursor indicator ─────────────────────────────────── */
+	/* ── Cursor ───────────────────────────────────────── */
 	.cursor {
 		position: absolute;
-		border-radius: 12px;
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.06);
+		top: 0;
+		left: 0;
+		border-radius: 14px;
+		background: rgba(255, 255, 255, 0.035);
+		border: 1.5px solid rgba(255, 255, 255, 0.06);
+		box-shadow: 0 0 24px rgba(255, 255, 255, 0.02);
 		pointer-events: none;
 		z-index: 1;
 		opacity: 0;
+		will-change: transform, width, height;
 		transition:
-			top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-			left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-			width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-			height 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-			opacity 0.3s ease;
+			transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+			width 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+			height 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+			opacity 0.25s ease;
 	}
 
-	/* ── Lines ────────────────────────────────────────────── */
+	/* ── Lines ────────────────────────────────────────── */
 	.line {
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: center;
 		gap: 0.3em;
 		padding: 0.15em 0;
-		max-width: 70vw;
-		position: relative;
+		max-width: 65vw;
 		z-index: 2;
 		transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.line.hide {
-		opacity: 0.03 !important;
-	}
-
-	/* ── Words ────────────────────────────────────────────── */
-	.word {
+	/* ── Words ────────────────────────────────────────── */
+	.w {
 		all: unset;
 		cursor: pointer;
-		padding: 0.04em 0.08em;
+		padding: 0.06em 0.1em;
 		border-radius: 6px;
-		position: relative;
 		z-index: 2;
 		color: rgba(255, 255, 255, 0.06);
 		transition:
@@ -155,46 +158,39 @@
 			transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.word.active {
+	.w.active {
 		color: white;
-		transform: scale(1.06);
+		transform: scale(1.05);
 	}
 
-	.word.near {
-		color: rgba(255, 255, 255, 0.3);
+	.w.near {
+		color: rgba(255, 255, 255, 0.28);
 	}
 
-	.word.past {
-		color: rgba(255, 255, 255, 0.1);
-	}
-
-	.word.future {
+	.w.dim {
 		color: rgba(255, 255, 255, 0.06);
 	}
 
-	.word:hover:not(.active) {
+	.w:hover:not(.active) {
 		color: rgba(255, 255, 255, 0.4);
 		transition-duration: 0.1s;
 	}
 
-	/* ── Gradient masks ───────────────────────────────────── */
-	.gradient-top,
-	.gradient-bottom {
+	/* ── Gradient masks ───────────────────────────────── */
+	.mask {
 		position: fixed;
 		left: 0;
 		right: 0;
-		height: 25vh;
+		height: 28vh;
 		pointer-events: none;
 		z-index: 50;
 	}
-
-	.gradient-top {
+	.mask-top {
 		top: 0;
-		background: linear-gradient(to bottom, #1a1a1a 0%, transparent 100%);
+		background: linear-gradient(to bottom, #1a1a1a 10%, transparent 100%);
 	}
-
-	.gradient-bottom {
+	.mask-bottom {
 		bottom: 0;
-		background: linear-gradient(to top, #1a1a1a 0%, transparent 100%);
+		background: linear-gradient(to top, #1a1a1a 10%, transparent 100%);
 	}
 </style>
