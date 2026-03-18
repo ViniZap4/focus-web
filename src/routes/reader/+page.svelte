@@ -3,7 +3,6 @@
 	import { reader } from '$lib/stores';
 	import { WordDisplay } from '../../blocks/Reader/WordDisplay';
 	import { FloatBar } from '../../blocks/Reader/FloatBar';
-	import { Settings } from '../../blocks/Settings';
 	import { ImageViewer } from '../../blocks/ImageViewer';
 	import { onMount, onDestroy } from 'svelte';
 
@@ -73,8 +72,6 @@
 				e.preventDefault();
 				if (reader.activeMedia) {
 					reader.dismissMedia();
-				} else if (reader.showSettings) {
-					reader.toggleSettings();
 				}
 				break;
 		}
@@ -87,7 +84,6 @@
 	<div class="reader" class:ready>
 		<WordDisplay />
 		<FloatBar />
-		<Settings />
 		<ImageViewer />
 	</div>
 {/if}
