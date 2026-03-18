@@ -161,6 +161,28 @@
 					<span class="toggle-thumb"></span>
 				</button>
 			</div>
+			<div class="row toggle-row">
+				<label for="sadl">Auto-detect language</label>
+				<button
+					id="sadl"
+					class="toggle"
+					aria-label="Auto-detect language"
+					class:on={reader.settings.autoDetectLang}
+					onclick={() => {
+						reader.settings.autoDetectLang = !reader.settings.autoDetectLang;
+						update();
+					}}
+					role="switch"
+					aria-checked={reader.settings.autoDetectLang}
+				>
+					<span class="toggle-thumb"></span>
+				</button>
+			</div>
+			{#if reader.detectedLang}
+				<div class="row">
+					<span class="lang-info">Detected: <strong>{reader.detectedLang}</strong></span>
+				</div>
+			{/if}
 		</div>
 
 		<!-- Keybinds -->
@@ -435,5 +457,16 @@
 	.kb-desc {
 		color: rgba(255, 255, 255, 0.12);
 		font-size: 0.6rem;
+	}
+
+	.lang-info {
+		color: rgba(255, 255, 255, 0.15);
+		font-size: 0.6rem;
+	}
+
+	.lang-info strong {
+		color: rgba(255, 255, 255, 0.3);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 </style>

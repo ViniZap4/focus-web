@@ -1,6 +1,9 @@
+import { detectLanguage, getBestVoice } from '$lib/parsers/language';
+
 export const sampleTexts = [
 	{
 		title: 'The Art of Focus',
+		lang: 'en',
 		content: `In a world saturated with distractions, the ability to focus has become a rare and valuable skill.
 Every notification, every buzz, every flash of light pulls our attention in a different direction.
 But deep within, there is a quiet place where words become worlds.
@@ -15,7 +18,41 @@ In this space, reading becomes meditation.
 And in that stillness, understanding blooms.`
 	},
 	{
+		title: 'A Arte do Foco',
+		lang: 'pt-BR',
+		content: `Em um mundo saturado de distrações, a capacidade de focar se tornou uma habilidade rara e valiosa.
+Cada notificação, cada vibração, cada flash de luz puxa nossa atenção em uma direção diferente.
+Mas lá no fundo, existe um lugar silencioso onde palavras se tornam mundos.
+Quando você lê com intenção, cada frase carrega peso.
+Cada parágrafo se desdobra como uma paisagem pela qual você está caminhando.
+O barulho desaparece. A tela se estreita. Apenas as palavras permanecem.
+Isso é leitura focada — a prática de dar sua atenção total a uma linha por vez.
+Sem passar os olhos. Sem escanear. Mas verdadeiramente absorvendo.
+Deixe cada palavra pousar antes de seguir para a próxima.
+Sinta o ritmo da linguagem enquanto ela se move através de você.
+Neste espaço, a leitura se torna meditação.
+E nessa quietude, a compreensão floresce.`
+	},
+	{
+		title: 'La Biblioteca Nocturna',
+		lang: 'es',
+		content: `Ella encontró la puerta a medianoche, escondida detrás de la vieja estantería.
+No debería haber estado allí — la pared era de ladrillo sólido esa misma mañana.
+Pero ahora estaba ligeramente entreabierta, con luz cálida derramándose por la rendija.
+La empujó y entró en una biblioteca que se extendía más allá de la vista.
+Los estantes se alzaban como paredes de catedral, desapareciendo en la oscuridad.
+Los libros flotaban entre los pasillos, a la deriva como medusas luminosas.
+Cada uno pulsaba con un brillo suave — algunos dorados, algunos azules, algunos violeta profundo.
+Extendió la mano hacia uno y este se posó en sus manos voluntariamente.
+En el momento en que lo abrió, las palabras se elevaron de la página.
+Giraron a su alrededor como luciérnagas, formando imágenes en el aire.
+Vio montañas. Vio océanos. Vio rostros que nunca había conocido.
+Y comprendió — estas no eran solo historias.
+Eran memorias de mundos que habían sido olvidados.`
+	},
+	{
 		title: 'The Night Library',
+		lang: 'en',
 		content: `She found the door at midnight, hidden behind the old bookshelf.
 It shouldn't have been there — the wall was solid brick just that morning.
 But now it stood slightly ajar, warm light spilling through the crack.
@@ -30,21 +67,6 @@ She saw mountains. She saw oceans. She saw faces she had never known.
 And she understood — these were not just stories.
 They were memories of worlds that had been forgotten.
 And now, through her reading, they could live again.`
-	},
-	{
-		title: 'On Walking',
-		content: `I went to the woods because I wished to live deliberately.
-To front only the essential facts of life.
-And see if I could not learn what it had to teach.
-And not, when I came to die, discover that I had not lived.
-I wanted to live deep and suck out all the marrow of life.
-To live so sturdily and Spartan-like as to put to rout all that was not life.
-To cut a broad swath and shave close.
-To drive life into a corner, and reduce it to its lowest terms.
-Simplicity, simplicity, simplicity.
-Let your affairs be as two or three, and not a hundred or a thousand.
-Instead of a million count half a dozen.
-And keep your accounts on your thumb-nail.`
 	}
 ];
 
@@ -77,6 +99,7 @@ export interface ReaderSettings {
 	voice: string;
 	speechPitch: number;
 	smoothScroll: boolean;
+	autoDetectLang: boolean;
 }
 
 const DEFAULT_SETTINGS: ReaderSettings = {
@@ -87,7 +110,8 @@ const DEFAULT_SETTINGS: ReaderSettings = {
 	wpm: 200,
 	voice: '',
 	speechPitch: 1,
-	smoothScroll: true
+	smoothScroll: true,
+	autoDetectLang: true
 };
 
 function loadSettings(): ReaderSettings {
@@ -113,8 +137,13 @@ class ReaderState {
 	media = $state<MediaItem[]>([]);
 	activeMedia = $state<MediaItem | null>(null);
 	fileName = $state('');
+	detectedLang = $state('en');
+	isRtl = $state(false);
+	parseProgress = $state(0);
+	isParsing = $state(false);
 
 	private playTimer: ReturnType<typeof setTimeout> | null = null;
+	private speechKeepAlive: ReturnType<typeof setInterval> | null = null;
 
 	lines = $derived.by((): LineToken[] => {
 		const rawLines = this.text.split('\n').filter((l) => l.trim().length > 0);
@@ -146,20 +175,42 @@ class ReaderState {
 	isAtEnd = $derived(this.currentWord >= this.totalWords - 1);
 	isAtStart = $derived(this.currentWord === 0);
 
-	// Check for media triggers at current word
-	currentMedia = $derived.by(() => {
-		return this.media.filter(
-			(m) => m.triggerAtWord >= this.currentWord - 5 && m.triggerAtWord <= this.currentWord + 5
-		);
+	// Estimated time remaining
+	etaMinutes = $derived.by(() => {
+		const remaining = this.totalWords - this.currentWord;
+		if (remaining <= 0 || this.settings.wpm <= 0) return 0;
+		return Math.ceil(remaining / this.settings.wpm);
 	});
 
-	setText(title: string, text: string, media: MediaItem[] = []) {
+	mediaCount = $derived(this.media.length);
+
+	setText(title: string, text: string, media: MediaItem[] = [], lang?: string) {
 		this.title = title;
 		this.text = text;
 		this.media = media;
 		this.currentWord = 0;
 		this.activeMedia = null;
 		this.stop();
+
+		// Detect language
+		if (lang) {
+			this.detectedLang = lang;
+		} else if (this.settings.autoDetectLang && text.length > 0) {
+			const result = detectLanguage(text);
+			this.detectedLang = result.code;
+			this.isRtl = result.isRtl;
+		}
+
+		// Auto-select voice for detected language
+		if (this.settings.autoDetectLang && typeof window !== 'undefined') {
+			const voices = window.speechSynthesis.getVoices();
+			if (voices.length > 0 && !this.settings.voice) {
+				const best = getBestVoice(voices, this.detectedLang);
+				if (best) {
+					this.settings.voice = best.name;
+				}
+			}
+		}
 	}
 
 	advance() {
@@ -184,6 +235,16 @@ class ReaderState {
 		}
 	}
 
+	jumpToPercent(pct: number) {
+		const idx = Math.floor((pct / 100) * (this.totalWords - 1));
+		this.jumpToWord(Math.max(0, Math.min(idx, this.totalWords - 1)));
+	}
+
+	restart() {
+		this.stop();
+		this.currentWord = 0;
+	}
+
 	private checkMediaTrigger() {
 		const triggered = this.media.find((m) => m.triggerAtWord === this.currentWord);
 		if (triggered) {
@@ -201,7 +262,6 @@ class ReaderState {
 
 	play() {
 		if (this.isPaused && this.isSpeaking) {
-			// Resume speech
 			window.speechSynthesis.resume();
 			this.isPaused = false;
 			this.isPlaying = true;
@@ -209,8 +269,8 @@ class ReaderState {
 		}
 		this.isPlaying = true;
 		this.isPaused = false;
-		this.scheduleNext();
 		this.speak();
+		this.scheduleNext();
 	}
 
 	pause() {
@@ -232,6 +292,10 @@ class ReaderState {
 		if (this.playTimer) {
 			clearTimeout(this.playTimer);
 			this.playTimer = null;
+		}
+		if (this.speechKeepAlive) {
+			clearInterval(this.speechKeepAlive);
+			this.speechKeepAlive = null;
 		}
 		if (typeof window !== 'undefined') {
 			window.speechSynthesis.cancel();
@@ -266,50 +330,76 @@ class ReaderState {
 		const remaining = allWords.slice(this.currentWord).map((w) => w.text);
 		if (remaining.length === 0) return;
 
-		// Split into sentences for better speech
-		const fullText = remaining.join(' ');
-		const utterance = new SpeechSynthesisUtterance(fullText);
-
-		// Map WPM to speech rate (180 wpm is roughly rate 1.0)
-		utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
-		utterance.pitch = this.settings.speechPitch;
-
-		if (this.settings.voice) {
-			const voices = window.speechSynthesis.getVoices();
-			const found = voices.find((v) => v.name === this.settings.voice);
-			if (found) utterance.voice = found;
-		}
-
+		// Chunk text into sentences for better speech quality
+		const chunks = chunkText(remaining.join(' '), 200);
+		let chunkIndex = 0;
+		let globalWordOffset = 0;
 		const startWord = this.currentWord;
-		let wordOffset = 0;
 
-		utterance.onboundary = (e) => {
-			if (e.name === 'word') {
-				const newIdx = startWord + wordOffset;
-				if (newIdx < this.totalWords) {
-					this.currentWord = newIdx;
-					this.checkMediaTrigger();
-				}
-				wordOffset++;
+		const speakChunk = () => {
+			if (chunkIndex >= chunks.length || !this.isPlaying) {
+				this.isSpeaking = false;
+				return;
 			}
-		};
 
-		utterance.onend = () => {
-			this.isSpeaking = false;
-			this.isPlaying = false;
-			this.isPaused = false;
-		};
+			const chunk = chunks[chunkIndex];
+			const utterance = new SpeechSynthesisUtterance(chunk);
 
-		utterance.onpause = () => {
-			this.isPaused = true;
-		};
+			utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
+			utterance.pitch = this.settings.speechPitch;
+			utterance.lang = this.detectedLang;
 
-		utterance.onresume = () => {
-			this.isPaused = false;
+			if (this.settings.voice) {
+				const voices = window.speechSynthesis.getVoices();
+				const found = voices.find((v) => v.name === this.settings.voice);
+				if (found) utterance.voice = found;
+			}
+
+			const chunkStartOffset = globalWordOffset;
+
+			utterance.onboundary = (e) => {
+				if (e.name === 'word') {
+					// Count words in the chunk up to charIndex
+					const textBefore = chunk.slice(0, e.charIndex);
+					const wordsBeforeCount = textBefore.split(/\s+/).filter((w) => w.length > 0).length;
+					const newIdx = startWord + chunkStartOffset + wordsBeforeCount;
+					if (newIdx < this.totalWords) {
+						this.currentWord = newIdx;
+						this.checkMediaTrigger();
+					}
+				}
+			};
+
+			utterance.onend = () => {
+				globalWordOffset += chunk.split(/\s+/).filter((w) => w.length > 0).length;
+				chunkIndex++;
+				if (this.isPlaying) {
+					speakChunk();
+				} else {
+					this.isSpeaking = false;
+				}
+			};
+
+			utterance.onerror = () => {
+				this.isSpeaking = false;
+				this.isPlaying = false;
+			};
+
+			window.speechSynthesis.speak(utterance);
 		};
 
 		this.isSpeaking = true;
-		window.speechSynthesis.speak(utterance);
+
+		// Chrome bug workaround: speech synthesis pauses after ~15s
+		// Keep it alive with periodic resume calls
+		this.speechKeepAlive = setInterval(() => {
+			if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+				window.speechSynthesis.pause();
+				window.speechSynthesis.resume();
+			}
+		}, 10000);
+
+		speakChunk();
 	}
 
 	saveSettings() {
@@ -329,7 +419,36 @@ class ReaderState {
 		this.media = [];
 		this.activeMedia = null;
 		this.fileName = '';
+		this.parseProgress = 0;
+		this.isParsing = false;
 	}
+}
+
+/**
+ * Split text into chunks at sentence boundaries for better speech quality.
+ */
+function chunkText(text: string, maxWords: number): string[] {
+	const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
+	const chunks: string[] = [];
+	let current = '';
+	let wordCount = 0;
+
+	for (const sentence of sentences) {
+		const sentenceWords = sentence.split(/\s+/).filter((w) => w.length > 0).length;
+		if (wordCount + sentenceWords > maxWords && current) {
+			chunks.push(current.trim());
+			current = '';
+			wordCount = 0;
+		}
+		current += sentence;
+		wordCount += sentenceWords;
+	}
+
+	if (current.trim()) {
+		chunks.push(current.trim());
+	}
+
+	return chunks;
 }
 
 export const reader = new ReaderState();

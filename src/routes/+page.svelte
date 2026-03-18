@@ -7,6 +7,7 @@
 	let customText = $state('');
 	let dragOver = $state(false);
 	let parsing = $state(false);
+	let parseProgress = $state(0);
 	let error = $state('');
 	let mounted = $state(false);
 
@@ -15,7 +16,7 @@
 	});
 
 	function select(sample: (typeof sampleTexts)[number]) {
-		reader.setText(sample.title, sample.content);
+		reader.setText(sample.title, sample.content, [], sample.lang);
 		goto('/reader');
 	}
 
@@ -28,15 +29,19 @@
 	async function handleFile(file: File) {
 		error = '';
 		parsing = true;
+		parseProgress = 0;
 		try {
-			const result = await parseFile(file);
+			const result = await parseFile(file, (pct) => {
+				parseProgress = pct;
+			});
 			reader.fileName = file.name;
-			reader.setText(result.title, result.text, result.media);
+			reader.setText(result.title, result.text, result.media, result.detectedLang);
 			goto('/reader');
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to parse file';
 		} finally {
 			parsing = false;
+			parseProgress = 0;
 		}
 	}
 
@@ -145,7 +150,7 @@
 	{#if parsing}
 		<div class="parsing fade-in">
 			<div class="spinner"></div>
-			<span>parsing...</span>
+			<span>parsing... {parseProgress > 0 ? `${Math.round(parseProgress)}%` : ''}</span>
 		</div>
 	{/if}
 
@@ -157,6 +162,7 @@
 				style="animation-delay: {200 + i * 60}ms"
 				onclick={() => select(sample)}
 			>
+				<span class="sample-lang">{sample.lang}</span>
 				{sample.title}
 			</button>
 		{/each}
@@ -347,6 +353,18 @@
 		border-color: rgba(255, 255, 255, 0.1);
 		background: rgba(255, 255, 255, 0.03);
 		transform: translateY(-1px);
+	}
+
+	.sample-lang {
+		font-size: 0.55rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: rgba(255, 255, 255, 0.15);
+		background: rgba(255, 255, 255, 0.03);
+		padding: 0.1rem 0.3rem;
+		border-radius: 4px;
+		margin-right: 0.3rem;
 	}
 
 	footer {
