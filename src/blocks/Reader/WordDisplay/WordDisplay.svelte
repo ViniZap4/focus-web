@@ -4,11 +4,9 @@
 	let container: HTMLDivElement | undefined = $state();
 	let raf = 0;
 
-	// Scroll active word to vertical center.
-	// Uses setInterval-style: only the latest RAF executes.
+	// Center active word on screen
 	$effect(() => {
-		// Track dependency
-		const _ = reader.currentWord;
+		void reader.currentWord;
 
 		cancelAnimationFrame(raf);
 		raf = requestAnimationFrame(() => {
@@ -20,17 +18,12 @@
 			const cRect = container.getBoundingClientRect();
 			const eRect = el.getBoundingClientRect();
 
-			const elCenter = eRect.top + eRect.height / 2;
-			const boxCenter = cRect.top + cRect.height / 2;
-			const delta = elCenter - boxCenter;
+			const delta = (eRect.top + eRect.height / 2) - (cRect.top + cRect.height / 2);
 
-			// Always instant during play — smooth can't keep up
 			container.scrollTo({
 				top: container.scrollTop + delta,
 				behavior: reader.isPlaying ? 'instant' : 'smooth'
 			});
-
-			void _;
 		});
 	});
 </script>
@@ -40,6 +33,7 @@
 	class="container"
 	style="font-family:'{reader.settings.fontFamily}',system-ui,sans-serif;font-size:{reader.settings.fontSize}px;letter-spacing:{reader.settings.letterSpacing}px;line-height:{reader.settings.lineHeight}"
 >
+	<!-- Spacer so first word can be centered -->
 	<div class="pad"></div>
 
 	{#each reader.lines as line (line.lineIndex)}
@@ -49,10 +43,10 @@
 				<button
 					class="word"
 					class:active={d === 0}
-					class:near={d >= -2 && d <= 2 && d !== 0}
+					class:near={d !== 0 && d >= -2 && d <= 2}
 					class:past={d < -2}
 					class:future={d > 2}
-					data-active={d === 0}
+					data-active={d === 0 ? 'true' : undefined}
 					onclick={() => {
 						reader.jumpToWord(w.globalIndex);
 						const m = reader.media.find((m) => m.triggerAtWord === w.globalIndex);
@@ -65,13 +59,17 @@
 		</div>
 	{/each}
 
+	<!-- Spacer so last word can be centered -->
 	<div class="pad"></div>
 </div>
 
 <style>
 	.container {
 		position: fixed;
-		inset: 0;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
 		overflow-y: auto;
 		overflow-x: hidden;
 		scrollbar-width: none;
@@ -79,12 +77,12 @@
 		flex-direction: column;
 		align-items: center;
 		padding: 0 2rem;
+		background: #1a1a1a;
 	}
 	.container::-webkit-scrollbar { display: none; }
 
 	.pad {
-		flex-shrink: 0;
-		height: 50vh;
+		flex: 0 0 50vh;
 	}
 
 	.line {
@@ -102,7 +100,7 @@
 		padding: 0.04em 0.06em;
 		border-radius: 4px;
 		color: rgba(255, 255, 255, 0.05);
-		transition: color 0.35s, transform 0.35s, filter 0.35s;
+		transition: color 0.3s, transform 0.3s, filter 0.3s;
 		transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 	}
 

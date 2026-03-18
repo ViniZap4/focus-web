@@ -125,11 +125,19 @@ function loadSettings(): ReaderSettings {
 	return { ...DEFAULT_SETTINGS };
 }
 
-// ─── Reader ──────────────────────────────────────────────────────────────────
+// ─── Playback modes ──────────────────────────────────────────────────────────
 //
-// Word position is driven ONLY by the timer (or user input).
-// Speech is audio-only — it plays alongside but does NOT move currentWord.
-// This eliminates all sync bugs between speech boundary events and the timer.
+// SPEECH mode (default when speech is available):
+//   Speech plays audio. onboundary fires a simple COUNTER — each "word"
+//   boundary increments the counter. currentWord = startWord + counter.
+//   No charIndex mapping. If onboundary doesn't fire within 1.5s,
+//   automatically falls back to TIMER mode.
+//
+// TIMER mode (fallback):
+//   setInterval at WPM rate advances currentWord.
+//   No speech involvement.
+//
+// Only ONE mode runs at a time. Never both.
 
 class ReaderState {
 	text = $state('');
@@ -150,24 +158,21 @@ class ReaderState {
 
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private keepAlive: ReturnType<typeof setInterval> | null = null;
+	private fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+	private speechGen = 0; // generation counter to ignore stale events
 
 	// ── Derived ───────────────────────────────────────────────────────────
 
 	lines = $derived.by((): LineToken[] => {
 		const rawLines = this.text.split('\n').filter((l) => l.trim().length > 0);
 		let gi = 0;
-		return rawLines.map((line, li) => {
-			const words = line.split(/\s+/).filter((w) => w.length > 0);
-			return {
-				lineIndex: li,
-				words: words.map((w, wi) => ({
-					text: w,
-					globalIndex: gi++,
-					lineIndex: li,
-					wordInLine: wi
-				}))
-			};
-		});
+		return rawLines.map((line, li) => ({
+			lineIndex: li,
+			words: line
+				.split(/\s+/)
+				.filter((w) => w.length > 0)
+				.map((w, wi) => ({ text: w, globalIndex: gi++, lineIndex: li, wordInLine: wi }))
+		}));
 	});
 
 	allWords = $derived(this.lines.flatMap((l) => l.words));
@@ -217,11 +222,13 @@ class ReaderState {
 		}
 	}
 
-	// ── Navigation ────────────────────────────────────────────────────────
+	// ── Navigation (user-driven, always works) ────────────────────────────
 
 	advance() {
-		if (this.currentWord < this.totalWords - 1) this.currentWord++;
-		this.checkMedia();
+		if (this.currentWord < this.totalWords - 1) {
+			this.currentWord++;
+			this.checkMedia();
+		}
 	}
 
 	goBack() {
@@ -232,8 +239,10 @@ class ReaderState {
 		if (idx < 0 || idx >= this.totalWords || idx === this.currentWord) return;
 		this.currentWord = idx;
 		this.checkMedia();
-		// Resync speech to new position
-		if (this.isSpeaking) this.startSpeechFrom(idx);
+		if (this.isSpeaking && this.isPlaying) {
+			// Restart speech from new position
+			this.startSpeechMode(idx);
+		}
 	}
 
 	jumpToPercent(pct: number) {
@@ -260,10 +269,7 @@ class ReaderState {
 		this.activeMedia = item;
 	}
 
-	// ── Playback ──────────────────────────────────────────────────────────
-	//
-	// Timer is the SOLE driver of currentWord during playback.
-	// Speech plays audio independently — no onboundary word tracking.
+	// ── Playback control ──────────────────────────────────────────────────
 
 	play() {
 		if (this.isPaused) {
@@ -271,21 +277,24 @@ class ReaderState {
 			this.isPlaying = true;
 			if (this.isSpeaking && typeof window !== 'undefined') {
 				window.speechSynthesis.resume();
+			} else {
+				this.startTimerMode();
 			}
-			this.startTimer();
 			return;
 		}
 
 		this.isPlaying = true;
 		this.isPaused = false;
-		this.startTimer();
-		this.startSpeechFrom(this.currentWord);
+
+		// Try speech mode. Falls back to timer if onboundary doesn't fire.
+		this.startSpeechMode(this.currentWord);
 	}
 
 	pause() {
 		this.isPlaying = false;
 		this.isPaused = true;
 		this.stopTimer();
+		this.clearFallback();
 		if (this.isSpeaking && typeof window !== 'undefined') {
 			window.speechSynthesis.pause();
 		}
@@ -297,6 +306,7 @@ class ReaderState {
 		this.isPaused = false;
 		this.stopTimer();
 		this.stopSpeech();
+		this.clearFallback();
 	}
 
 	toggle() {
@@ -305,20 +315,113 @@ class ReaderState {
 
 	restartSpeech() {
 		if (!this.isPlaying) return;
+		this.startSpeechMode(this.currentWord);
+	}
+
+	// ── Speech mode ───────────────────────────────────────────────────────
+	//
+	// Speech plays audio. onboundary counts "word" events to advance
+	// currentWord. No charIndex, no mapping — just a counter.
+	// If no boundary fires within 1.5s, falls back to timer.
+
+	private startSpeechMode(fromWord: number) {
+		this.stopTimer();
 		this.stopSpeech();
-		this.startSpeechFrom(this.currentWord);
-	}
+		this.clearFallback();
 
-	// ── Timer ─────────────────────────────────────────────────────────────
-
-	private stopTimer() {
-		if (this.timer) {
-			clearInterval(this.timer);
-			this.timer = null;
+		if (typeof window === 'undefined' || !window.speechSynthesis) {
+			this.startTimerMode();
+			return;
 		}
+
+		const words = this.allWords.slice(fromWord);
+		if (words.length === 0) {
+			this.stop();
+			return;
+		}
+
+		this.speechGen++;
+		const gen = this.speechGen;
+		const baseWord = fromWord;
+		let boundaryCount = 0;
+		let gotFirstBoundary = false;
+
+		const text = words.map((w) => w.text).join(' ');
+		const utterance = new SpeechSynthesisUtterance(text);
+		utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
+		utterance.pitch = this.settings.speechPitch;
+		utterance.lang = this.detectedLang;
+
+		if (this.settings.voice) {
+			const voices = window.speechSynthesis.getVoices();
+			const v = voices.find((v) => v.name === this.settings.voice);
+			if (v) utterance.voice = v;
+		}
+
+		utterance.onboundary = (e) => {
+			if (gen !== this.speechGen) return; // stale
+			if (e.name !== 'word' || !this.isPlaying) return;
+
+			if (!gotFirstBoundary) {
+				gotFirstBoundary = true;
+				this.clearFallback(); // cancel timer fallback — speech is working
+			}
+
+			const target = baseWord + boundaryCount;
+			if (target < this.totalWords) {
+				this.currentWord = target;
+				this.checkMedia();
+			}
+			boundaryCount++;
+		};
+
+		utterance.onend = () => {
+			if (gen !== this.speechGen) return;
+			this.isSpeaking = false;
+			this.clearKeepAlive();
+			// Advance to end if not already there
+			if (this.isPlaying) {
+				if (this.currentWord < this.totalWords - 1) {
+					this.currentWord = this.totalWords - 1;
+				}
+				this.stop();
+			}
+		};
+
+		utterance.onerror = () => {
+			if (gen !== this.speechGen) return;
+			this.isSpeaking = false;
+			this.clearKeepAlive();
+			if (this.isPlaying) this.startTimerMode();
+		};
+
+		this.isSpeaking = true;
+		window.speechSynthesis.speak(utterance);
+
+		// Chrome 15s workaround
+		this.clearKeepAlive();
+		this.keepAlive = setInterval(() => {
+			const ss = window.speechSynthesis;
+			if (ss.speaking && !ss.paused) {
+				ss.pause();
+				ss.resume();
+			}
+		}, 10000);
+
+		// Fallback: if no boundary fires within 1.5s, switch to timer
+		this.fallbackTimeout = setTimeout(() => {
+			if (gen !== this.speechGen) return;
+			if (!gotFirstBoundary && this.isPlaying) {
+				// onboundary isn't working for this voice — use timer instead
+				// Keep speech playing for audio, but timer drives highlighting
+				this.startTimerMode();
+			}
+		}, 1500);
 	}
 
-	private startTimer() {
+	// ── Timer mode (fallback) ─────────────────────────────────────────────
+
+	private startTimerMode() {
 		this.stopTimer();
 		if (!this.isPlaying) return;
 
@@ -337,64 +440,34 @@ class ReaderState {
 		}, ms);
 	}
 
-	// ── Speech (audio only, does NOT move currentWord) ────────────────────
+	// ── Cleanup helpers ───────────────────────────────────────────────────
 
-	private stopSpeech() {
-		this.isSpeaking = false;
+	private stopTimer() {
+		if (this.timer) {
+			clearInterval(this.timer);
+			this.timer = null;
+		}
+	}
+
+	private clearKeepAlive() {
 		if (this.keepAlive) {
 			clearInterval(this.keepAlive);
 			this.keepAlive = null;
 		}
-		if (typeof window !== 'undefined') window.speechSynthesis.cancel();
 	}
 
-	private startSpeechFrom(fromWord: number) {
-		if (typeof window === 'undefined' || !window.speechSynthesis) return;
-
-		this.stopSpeech();
-
-		const words = this.allWords.slice(fromWord);
-		if (words.length === 0) return;
-
-		const text = words.map((w) => w.text).join(' ');
-		const utterance = new SpeechSynthesisUtterance(text);
-		utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
-		utterance.pitch = this.settings.speechPitch;
-		utterance.lang = this.detectedLang;
-
-		if (this.settings.voice) {
-			const voices = window.speechSynthesis.getVoices();
-			const v = voices.find((v) => v.name === this.settings.voice);
-			if (v) utterance.voice = v;
+	private clearFallback() {
+		if (this.fallbackTimeout) {
+			clearTimeout(this.fallbackTimeout);
+			this.fallbackTimeout = null;
 		}
+	}
 
-		utterance.onend = () => {
-			this.isSpeaking = false;
-			if (this.keepAlive) {
-				clearInterval(this.keepAlive);
-				this.keepAlive = null;
-			}
-		};
-
-		utterance.onerror = () => {
-			this.isSpeaking = false;
-			if (this.keepAlive) {
-				clearInterval(this.keepAlive);
-				this.keepAlive = null;
-			}
-		};
-
-		this.isSpeaking = true;
-		window.speechSynthesis.speak(utterance);
-
-		// Chrome workaround: speech hangs after ~15s
-		this.keepAlive = setInterval(() => {
-			const ss = window.speechSynthesis;
-			if (ss.speaking && !ss.paused) {
-				ss.pause();
-				ss.resume();
-			}
-		}, 10000);
+	private stopSpeech() {
+		this.isSpeaking = false;
+		this.clearKeepAlive();
+		this.speechGen++; // invalidate any pending events
+		if (typeof window !== 'undefined') window.speechSynthesis.cancel();
 	}
 
 	// ── Settings ──────────────────────────────────────────────────────────
