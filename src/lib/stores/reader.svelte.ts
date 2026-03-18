@@ -310,6 +310,17 @@ class ReaderState {
 		}
 	}
 
+	/** Restart speech with current settings (e.g. after voice change) */
+	restartSpeech() {
+		if (this.isSpeaking || this.isPlaying) {
+			const wasPlaying = this.isPlaying;
+			this.stop();
+			if (wasPlaying) {
+				this.play();
+			}
+		}
+	}
+
 	private scheduleNext() {
 		if (!this.isPlaying) return;
 		const ms = (60 / this.settings.wpm) * 1000;

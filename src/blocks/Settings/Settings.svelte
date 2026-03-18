@@ -1,38 +1,42 @@
 <script lang="ts">
 	import { reader } from '$lib/stores';
+	import { filterVoicesByLang } from '$lib/parsers';
 	import { onMount } from 'svelte';
 
 	let voices: SpeechSynthesisVoice[] = $state([]);
+	let langVoices = $derived(filterVoicesByLang(voices, reader.detectedLang));
 
 	const fonts = [
-		{ name: 'Inter', value: 'Inter' },
-		{ name: 'Georgia', value: 'Georgia' },
-		{ name: 'System', value: 'system-ui' },
-		{ name: 'Mono', value: 'monospace' },
-		{ name: 'Serif', value: 'serif' }
+		{ label: 'Sans', value: 'Inter' },
+		{ label: 'Serif', value: 'Georgia' },
+		{ label: 'Mono', value: 'monospace' },
+		{ label: 'System', value: 'system-ui' }
 	];
 
 	onMount(() => {
-		function loadVoices() {
-			voices = window.speechSynthesis.getVoices().sort((a, b) => {
-				if (a.lang < b.lang) return -1;
-				if (a.lang > b.lang) return 1;
-				return a.name.localeCompare(b.name);
-			});
-		}
-		loadVoices();
-		window.speechSynthesis.onvoiceschanged = loadVoices;
+		function load() { voices = window.speechSynthesis.getVoices(); }
+		load();
+		window.speechSynthesis.onvoiceschanged = load;
 	});
 
-	function update() {
-		reader.saveSettings();
+	function save() { reader.saveSettings(); }
+
+	function changeVoice(name: string) {
+		reader.settings.voice = name;
+		save();
+		// Restart speech with new voice if currently speaking
+		if (reader.isSpeaking) {
+			reader.stop();
+			reader.play();
+		}
 	}
 
-	function previewVoice() {
+	function preview() {
 		window.speechSynthesis.cancel();
 		const u = new SpeechSynthesisUtterance('Focus, word by word.');
 		u.rate = reader.settings.wpm / 180;
 		u.pitch = reader.settings.speechPitch;
+		u.lang = reader.detectedLang;
 		if (reader.settings.voice) {
 			const v = voices.find((v) => v.name === reader.settings.voice);
 			if (v) u.voice = v;
@@ -42,161 +46,133 @@
 </script>
 
 {#if reader.showSettings}
-	<button
-		class="backdrop"
-		aria-label="Close settings"
-		onclick={() => reader.toggleSettings()}
-	></button>
+	<button class="backdrop" aria-label="Close" onclick={() => reader.toggleSettings()}></button>
 
 	<div class="panel">
-		<!-- Header -->
-		<div class="panel-head">
+		<div class="head">
 			<span>Settings</span>
-			<button class="close" onclick={() => reader.toggleSettings()} aria-label="Close">&times;</button>
+			<button class="x" aria-label="Close" onclick={() => reader.toggleSettings()}>&times;</button>
 		</div>
 
-		<!-- Typography section -->
-		<div class="section">
-			<span class="section-title">Typography</span>
+		<!-- Font row -->
+		<div class="row">
+			<div class="chips">
+				{#each fonts as f}
+					<button
+						class="chip"
+						class:on={reader.settings.fontFamily === f.value}
+						style="font-family: {f.value}"
+						onclick={() => { reader.settings.fontFamily = f.value; save(); }}
+					>{f.label}</button>
+				{/each}
+			</div>
+		</div>
 
-			<div class="row">
-				<label for="sf">Font</label>
-				<div class="chips">
-					{#each fonts as f}
-						<button
-							class="chip"
-							class:active={reader.settings.fontFamily === f.value}
-							style="font-family: {f.value}"
-							onclick={() => {
-								reader.settings.fontFamily = f.value;
-								update();
-							}}
-						>
-							{f.name}
-						</button>
-					{/each}
+		<!-- Size + Height on one row -->
+		<div class="row dual">
+			<div class="slider-col">
+				<label for="sz">Size</label>
+				<div class="s-row">
+					<input id="sz" type="range" min="20" max="64" step="2" bind:value={reader.settings.fontSize} oninput={save} />
+					<span class="v">{reader.settings.fontSize}</span>
 				</div>
 			</div>
-
-			<div class="row">
-				<label for="ss">Size</label>
-				<div class="slider-row">
-					<input id="ss" type="range" min="18" max="64" step="2" bind:value={reader.settings.fontSize} oninput={update} />
-					<span class="val">{reader.settings.fontSize}</span>
-				</div>
-			</div>
-
-			<div class="row">
-				<label for="sls">Spacing</label>
-				<div class="slider-row">
-					<input id="sls" type="range" min="-1" max="8" step="0.5" bind:value={reader.settings.letterSpacing} oninput={update} />
-					<span class="val">{reader.settings.letterSpacing}</span>
-				</div>
-			</div>
-
-			<div class="row">
-				<label for="slh">Height</label>
-				<div class="slider-row">
-					<input id="slh" type="range" min="1.2" max="4" step="0.2" bind:value={reader.settings.lineHeight} oninput={update} />
-					<span class="val">{reader.settings.lineHeight.toFixed(1)}</span>
+			<div class="slider-col">
+				<label for="lh">Height</label>
+				<div class="s-row">
+					<input id="lh" type="range" min="1.4" max="4" step="0.2" bind:value={reader.settings.lineHeight} oninput={save} />
+					<span class="v">{reader.settings.lineHeight.toFixed(1)}</span>
 				</div>
 			</div>
 		</div>
 
-		<!-- Speech section -->
-		<div class="section">
-			<span class="section-title">Speech</span>
-
-			<div class="row">
-				<label for="swpm">Speed</label>
-				<div class="slider-row">
-					<input id="swpm" type="range" min="60" max="600" step="10" bind:value={reader.settings.wpm} oninput={update} />
-					<span class="val">{reader.settings.wpm} wpm</span>
+		<!-- Spacing + Speed on one row -->
+		<div class="row dual">
+			<div class="slider-col">
+				<label for="ls">Spacing</label>
+				<div class="s-row">
+					<input id="ls" type="range" min="-1" max="6" step="0.5" bind:value={reader.settings.letterSpacing} oninput={save} />
+					<span class="v">{reader.settings.letterSpacing}</span>
 				</div>
 			</div>
-
-			<div class="row">
-				<label for="sp">Pitch</label>
-				<div class="slider-row">
-					<input id="sp" type="range" min="0.5" max="2" step="0.1" bind:value={reader.settings.speechPitch} oninput={update} />
-					<span class="val">{reader.settings.speechPitch.toFixed(1)}</span>
+			<div class="slider-col">
+				<label for="wpm">WPM</label>
+				<div class="s-row">
+					<input id="wpm" type="range" min="60" max="600" step="10" bind:value={reader.settings.wpm} oninput={save} />
+					<span class="v">{reader.settings.wpm}</span>
 				</div>
 			</div>
+		</div>
 
-			<div class="row">
-				<label for="sv">Voice</label>
-				<div class="voice-row">
-					<select id="sv" bind:value={reader.settings.voice} onchange={update}>
-						<option value="">Default</option>
-						{#each voices as voice}
-							<option value={voice.name}>{voice.name} ({voice.lang})</option>
+		<!-- Divider -->
+		<div class="divider"></div>
+
+		<!-- Voice -->
+		<div class="row">
+			<div class="voice-pick">
+				<select
+					value={reader.settings.voice}
+					onchange={(e) => changeVoice((e.target as HTMLSelectElement).value)}
+				>
+					<option value="">Auto ({reader.detectedLang})</option>
+					{#if langVoices.length > 0}
+						{#each langVoices as v}
+							<option value={v.name}>{v.name}</option>
 						{/each}
-					</select>
-					<button class="preview-btn" onclick={previewVoice} title="Preview voice">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-							<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
-						</svg>
-					</button>
-				</div>
+					{/if}
+					{#if voices.length > langVoices.length}
+						<optgroup label="Other">
+							{#each voices.filter(v => !langVoices.includes(v)) as v}
+								<option value={v.name}>{v.name} ({v.lang})</option>
+							{/each}
+						</optgroup>
+					{/if}
+				</select>
+				<button class="play-voice" onclick={preview} title="Preview">
+					<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+						<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+					</svg>
+				</button>
 			</div>
 		</div>
 
-		<!-- Display section -->
-		<div class="section">
-			<span class="section-title">Display</span>
-			<div class="row toggle-row">
-				<label for="sss">Smooth scroll</label>
+		<!-- Pitch -->
+		<div class="row">
+			<div class="s-row">
+				<label for="pi" class="inline-label">Pitch</label>
+				<input id="pi" type="range" min="0.5" max="2" step="0.1" bind:value={reader.settings.speechPitch} oninput={save} />
+				<span class="v">{reader.settings.speechPitch.toFixed(1)}</span>
+			</div>
+		</div>
+
+		<!-- Divider -->
+		<div class="divider"></div>
+
+		<!-- Toggles -->
+		<div class="row toggles">
+			<label>Smooth scroll
 				<button
-					id="sss"
-					class="toggle"
+					class="tog" class:on={reader.settings.smoothScroll}
 					aria-label="Smooth scroll"
-					class:on={reader.settings.smoothScroll}
-					onclick={() => {
-						reader.settings.smoothScroll = !reader.settings.smoothScroll;
-						update();
-					}}
-					role="switch"
-					aria-checked={reader.settings.smoothScroll}
-				>
-					<span class="toggle-thumb"></span>
-				</button>
-			</div>
-			<div class="row toggle-row">
-				<label for="sadl">Auto-detect language</label>
+					onclick={() => { reader.settings.smoothScroll = !reader.settings.smoothScroll; save(); }}
+				><span class="dot"></span></button>
+			</label>
+			<label>Auto-detect lang
 				<button
-					id="sadl"
-					class="toggle"
+					class="tog" class:on={reader.settings.autoDetectLang}
 					aria-label="Auto-detect language"
-					class:on={reader.settings.autoDetectLang}
-					onclick={() => {
-						reader.settings.autoDetectLang = !reader.settings.autoDetectLang;
-						update();
-					}}
-					role="switch"
-					aria-checked={reader.settings.autoDetectLang}
-				>
-					<span class="toggle-thumb"></span>
-				</button>
-			</div>
-			{#if reader.detectedLang}
-				<div class="row">
-					<span class="lang-info">Detected: <strong>{reader.detectedLang}</strong></span>
-				</div>
-			{/if}
+					onclick={() => { reader.settings.autoDetectLang = !reader.settings.autoDetectLang; save(); }}
+				><span class="dot"></span></button>
+			</label>
 		</div>
 
-		<!-- Keybinds -->
-		<div class="section keybinds">
-			<span class="section-title">Keys</span>
-			<div class="kb-grid">
-				<span class="kb"><kbd>→</kbd><kbd>j</kbd><kbd>spc</kbd></span><span class="kb-desc">next</span>
-				<span class="kb"><kbd>←</kbd><kbd>k</kbd></span><span class="kb-desc">prev</span>
-				<span class="kb"><kbd>↓</kbd></span><span class="kb-desc">next line</span>
-				<span class="kb"><kbd>↑</kbd></span><span class="kb-desc">prev line</span>
-				<span class="kb"><kbd>p</kbd></span><span class="kb-desc">play</span>
-				<span class="kb"><kbd>s</kbd></span><span class="kb-desc">speak</span>
-				<span class="kb"><kbd>esc</kbd></span><span class="kb-desc">close</span>
-			</div>
+		<!-- Keys -->
+		<div class="keys">
+			<span><kbd>→</kbd> <kbd>j</kbd> <kbd>spc</kbd> next</span>
+			<span><kbd>←</kbd> <kbd>k</kbd> prev</span>
+			<span><kbd>↓↑</kbd> line</span>
+			<span><kbd>p</kbd> play</span>
+			<span><kbd>s</kbd> speak</span>
 		</div>
 	</div>
 {/if}
@@ -206,267 +182,186 @@
 		all: unset;
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.3);
+		background: rgba(0,0,0,0.25);
 		z-index: 200;
-		animation: fadeIn 0.2s ease;
+		animation: fadeIn 0.15s ease;
 	}
-
-	@keyframes fadeIn {
-		from { opacity: 0; }
-	}
+	@keyframes fadeIn { from { opacity: 0; } }
 
 	.panel {
 		position: fixed;
-		right: 1.5rem;
-		bottom: 5.5rem;
-		width: min(85vw, 300px);
-		max-height: 75vh;
+		right: 1.25rem;
+		bottom: 5rem;
+		width: min(88vw, 320px);
+		max-height: 70vh;
 		overflow-y: auto;
 		scrollbar-width: none;
-		background: rgba(20, 20, 20, 0.95);
+		background: rgba(18, 18, 18, 0.95);
 		backdrop-filter: blur(30px);
 		-webkit-backdrop-filter: blur(30px);
-		border: 1px solid rgba(255, 255, 255, 0.06);
-		border-radius: 20px;
-		padding: 1rem;
+		border: 1px solid rgba(255,255,255,0.05);
+		border-radius: 18px;
+		padding: 0.85rem;
 		z-index: 201;
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
-		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
-		animation: panelIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+		gap: 0.6rem;
+		box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+		animation: panelIn 0.3s cubic-bezier(0.16,1,0.3,1);
 	}
-
 	.panel::-webkit-scrollbar { display: none; }
+	@keyframes panelIn { from { opacity: 0; transform: translateY(10px) scale(0.97); } }
 
-	@keyframes panelIn {
-		from {
-			opacity: 0;
-			transform: translateY(12px) scale(0.96);
-		}
-	}
-
-	.panel-head {
+	.head {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		color: rgba(255, 255, 255, 0.5);
-		font-size: 0.7rem;
+		color: rgba(255,255,255,0.4);
+		font-size: 0.65rem;
 		font-weight: 500;
 		text-transform: uppercase;
 		letter-spacing: 0.12em;
-		padding-bottom: 0.5rem;
 	}
-
-	.close {
-		all: unset;
-		cursor: pointer;
-		color: rgba(255, 255, 255, 0.2);
-		font-size: 1.1rem;
-		width: 24px;
-		height: 24px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 8px;
-		transition: all 0.2s;
+	.x {
+		all: unset; cursor: pointer;
+		color: rgba(255,255,255,0.15); font-size: 1rem;
+		width: 22px; height: 22px;
+		display: flex; align-items: center; justify-content: center;
+		border-radius: 7px; transition: all 0.2s;
 	}
+	.x:hover { color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); }
 
-	.close:hover {
-		color: rgba(255, 255, 255, 0.6);
-		background: rgba(255, 255, 255, 0.05);
-	}
+	.row { display: flex; flex-direction: column; gap: 0.25rem; }
 
-	.section {
-		padding: 0.6rem 0;
-		border-top: 1px solid rgba(255, 255, 255, 0.03);
-		display: flex;
-		flex-direction: column;
-		gap: 0.55rem;
-	}
-
-	.section-title {
-		color: rgba(255, 255, 255, 0.2);
-		font-size: 0.55rem;
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
-	}
-
-	.row {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-	}
-
-	.row label {
-		color: rgba(255, 255, 255, 0.25);
-		font-size: 0.65rem;
-	}
-
-	.chips {
-		display: flex;
-		gap: 0.25rem;
-		flex-wrap: wrap;
-	}
-
-	.chip {
-		all: unset;
-		cursor: pointer;
-		padding: 0.3rem 0.6rem;
-		border-radius: 8px;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.3);
-		border: 1px solid rgba(255, 255, 255, 0.04);
-		transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	.chip:hover {
-		color: rgba(255, 255, 255, 0.6);
-		border-color: rgba(255, 255, 255, 0.1);
-	}
-
-	.chip.active {
-		color: rgba(255, 255, 255, 0.8);
-		background: rgba(255, 255, 255, 0.08);
-		border-color: rgba(255, 255, 255, 0.12);
-	}
-
-	.slider-row {
-		display: flex;
-		align-items: center;
+	.dual {
+		flex-direction: row;
 		gap: 0.6rem;
 	}
-
-	.slider-row input[type='range'] {
+	.slider-col {
 		flex: 1;
-		accent-color: rgba(255, 255, 255, 0.4);
-		height: 3px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+	.slider-col label, .inline-label {
+		color: rgba(255,255,255,0.18);
+		font-size: 0.55rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
 	}
 
-	.val {
-		color: rgba(255, 255, 255, 0.2);
-		font-size: 0.6rem;
+	.s-row {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.s-row input[type='range'] {
+		flex: 1;
+		accent-color: rgba(255,255,255,0.35);
+		height: 3px;
+	}
+	.v {
+		color: rgba(255,255,255,0.15);
+		font-size: 0.55rem;
 		font-family: monospace;
 		font-variant-numeric: tabular-nums;
-		min-width: 3rem;
+		min-width: 2rem;
 		text-align: right;
 	}
 
-	.voice-row {
-		display: flex;
-		gap: 0.35rem;
+	.chips { display: flex; gap: 0.2rem; }
+	.chip {
+		all: unset; cursor: pointer;
+		padding: 0.25rem 0.55rem;
+		border-radius: 7px;
+		font-size: 0.65rem;
+		color: rgba(255,255,255,0.2);
+		border: 1px solid rgba(255,255,255,0.04);
+		transition: all 0.25s cubic-bezier(0.16,1,0.3,1);
+	}
+	.chip:hover { color: rgba(255,255,255,0.5); border-color: rgba(255,255,255,0.08); }
+	.chip.on { color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.1); }
+
+	.divider {
+		height: 1px;
+		background: rgba(255,255,255,0.03);
+		margin: 0.1rem 0;
 	}
 
-	.voice-row select {
+	.voice-pick {
+		display: flex;
+		gap: 0.3rem;
+	}
+	.voice-pick select {
 		flex: 1;
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(255, 255, 255, 0.05);
-		color: rgba(255, 255, 255, 0.5);
-		padding: 0.35rem 0.5rem;
+		background: rgba(255,255,255,0.03);
+		border: 1px solid rgba(255,255,255,0.05);
+		color: rgba(255,255,255,0.45);
+		padding: 0.3rem 0.5rem;
 		border-radius: 8px;
-		font-size: 0.7rem;
+		font-size: 0.65rem;
 		outline: none;
-		transition: border-color 0.2s;
 	}
+	.voice-pick select:focus { border-color: rgba(255,255,255,0.1); }
 
-	.voice-row select:focus {
-		border-color: rgba(255, 255, 255, 0.12);
-	}
-
-	.preview-btn {
-		all: unset;
-		cursor: pointer;
-		width: 30px;
-		height: 30px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
+	.play-voice {
+		all: unset; cursor: pointer;
+		width: 28px; height: 28px;
+		display: flex; align-items: center; justify-content: center;
 		border-radius: 8px;
-		color: rgba(255, 255, 255, 0.25);
-		border: 1px solid rgba(255, 255, 255, 0.05);
+		color: rgba(255,255,255,0.2);
+		border: 1px solid rgba(255,255,255,0.04);
 		transition: all 0.2s;
 	}
+	.play-voice:hover { color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); }
 
-	.preview-btn:hover {
-		color: rgba(255, 255, 255, 0.6);
-		background: rgba(255, 255, 255, 0.05);
+	.toggles {
+		flex-direction: column;
+		gap: 0.4rem;
 	}
-
-	.toggle-row {
-		flex-direction: row;
+	.toggles label {
+		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		color: rgba(255,255,255,0.2);
+		font-size: 0.6rem;
 	}
-
-	.toggle {
-		all: unset;
-		cursor: pointer;
-		width: 36px;
-		height: 20px;
-		border-radius: 10px;
-		background: rgba(255, 255, 255, 0.06);
+	.tog {
+		all: unset; cursor: pointer;
+		width: 32px; height: 18px;
+		border-radius: 9px;
+		background: rgba(255,255,255,0.06);
 		position: relative;
 		transition: background 0.3s;
 	}
-
-	.toggle.on {
-		background: rgba(255, 255, 255, 0.2);
-	}
-
-	.toggle-thumb {
+	.tog.on { background: rgba(255,255,255,0.18); }
+	.dot {
 		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 16px;
-		height: 16px;
+		top: 2px; left: 2px;
+		width: 14px; height: 14px;
 		border-radius: 50%;
-		background: rgba(255, 255, 255, 0.5);
-		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+		background: rgba(255,255,255,0.45);
+		transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
 	}
+	.tog.on .dot { left: 16px; background: white; }
 
-	.toggle.on .toggle-thumb {
-		left: 18px;
-		background: white;
-	}
-
-	.keybinds {
-		gap: 0.4rem;
-	}
-
-	.kb-grid {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.2rem 0.6rem;
-		align-items: center;
-	}
-
-	.kb {
+	.keys {
 		display: flex;
-		gap: 0.2rem;
+		flex-wrap: wrap;
+		gap: 0.3rem 0.6rem;
+		padding-top: 0.2rem;
 	}
-
-	.kb kbd {
-		background: rgba(255, 255, 255, 0.04);
-		color: rgba(255, 255, 255, 0.25);
-		padding: 0.1rem 0.35rem;
-		border-radius: 4px;
-		font-family: monospace;
+	.keys span {
+		color: rgba(255,255,255,0.1);
 		font-size: 0.55rem;
+		white-space: nowrap;
 	}
-
-	.kb-desc {
-		color: rgba(255, 255, 255, 0.12);
-		font-size: 0.6rem;
-	}
-
-	.lang-info {
-		color: rgba(255, 255, 255, 0.15);
-		font-size: 0.6rem;
-	}
-
-	.lang-info strong {
-		color: rgba(255, 255, 255, 0.3);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+	.keys kbd {
+		background: rgba(255,255,255,0.04);
+		color: rgba(255,255,255,0.2);
+		padding: 0.05rem 0.25rem;
+		border-radius: 3px;
+		font-family: monospace;
+		font-size: 0.5rem;
 	}
 </style>
