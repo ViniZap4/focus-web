@@ -1,105 +1,75 @@
 <script lang="ts">
 	import { reader } from '$lib/stores';
 
-	let containerEl: HTMLDivElement | undefined = $state();
-	let scrollRAF = 0;
+	let container: HTMLDivElement | undefined = $state();
+	let raf = 0;
 
-	// ── Scroll: keep active word vertically centered ──────────────────────
-	//
-	// On every currentWord change:
-	//   1. Cancel any pending RAF (debounce rapid changes from speech).
-	//   2. In the next frame, find the active element and scroll it to center.
-	//   3. Use 'instant' during playback (smooth can't keep up at high WPM).
-	//      Use 'smooth' only for manual navigation.
-
+	// Scroll active word to vertical center.
+	// Uses setInterval-style: only the latest RAF executes.
 	$effect(() => {
-		const word = reader.currentWord;
-		const playing = reader.isPlaying;
-		const smooth = reader.settings.smoothScroll;
+		// Track dependency
+		const _ = reader.currentWord;
 
-		cancelAnimationFrame(scrollRAF);
-		scrollRAF = requestAnimationFrame(() => {
-			if (!containerEl) return;
+		cancelAnimationFrame(raf);
+		raf = requestAnimationFrame(() => {
+			if (!container) return;
 
-			const el = containerEl.querySelector(`[data-active="true"]`) as HTMLElement | null;
+			const el = container.querySelector('[data-active="true"]') as HTMLElement | null;
 			if (!el) return;
 
-			// getBoundingClientRect gives current visual position (accounts for scroll)
-			const cRect = containerEl.getBoundingClientRect();
+			const cRect = container.getBoundingClientRect();
 			const eRect = el.getBoundingClientRect();
 
-			// Distance from element center to container center
-			const offset =
-				eRect.top + eRect.height / 2 - (cRect.top + cRect.height / 2);
+			const elCenter = eRect.top + eRect.height / 2;
+			const boxCenter = cRect.top + cRect.height / 2;
+			const delta = elCenter - boxCenter;
 
-			// Scroll by that offset to center the element
-			containerEl.scrollTo({
-				top: containerEl.scrollTop + offset,
-				behavior: playing || !smooth ? 'instant' : 'smooth'
+			// Always instant during play — smooth can't keep up
+			container.scrollTo({
+				top: container.scrollTop + delta,
+				behavior: reader.isPlaying ? 'instant' : 'smooth'
 			});
 
-			// Suppress unused variable warnings
-			void word;
+			void _;
 		});
 	});
-
-	// ── Word classification ───────────────────────────────────────────────
-
-	function cls(gi: number): string {
-		const d = gi - reader.currentWord;
-		if (d === 0) return 'active';
-		if (d === -1 || d === -2) return 'near-before';
-		if (d === 1 || d === 2) return 'near-after';
-		return d < 0 ? 'past' : 'future';
-	}
-
-	function hasMedia(gi: number): boolean {
-		return reader.media.some((m) => m.triggerAtWord === gi);
-	}
-
-	function getMedia(gi: number) {
-		return reader.media.find((m) => m.triggerAtWord === gi);
-	}
 </script>
 
 <div
-	bind:this={containerEl}
-	class="wd"
-	style="
-		font-family: '{reader.settings.fontFamily}', system-ui, sans-serif;
-		font-size: {reader.settings.fontSize}px;
-		letter-spacing: {reader.settings.letterSpacing}px;
-		line-height: {reader.settings.lineHeight};
-	"
+	bind:this={container}
+	class="container"
+	style="font-family:'{reader.settings.fontFamily}',system-ui,sans-serif;font-size:{reader.settings.fontSize}px;letter-spacing:{reader.settings.letterSpacing}px;line-height:{reader.settings.lineHeight}"
 >
-	<div class="sp"></div>
+	<div class="pad"></div>
 
 	{#each reader.lines as line (line.lineIndex)}
-		<div class="ln">
+		<div class="line">
 			{#each line.words as w (w.globalIndex)}
+				{@const d = w.globalIndex - reader.currentWord}
 				<button
-					class="w {cls(w.globalIndex)}"
-					data-active={w.globalIndex === reader.currentWord}
+					class="word"
+					class:active={d === 0}
+					class:near={d >= -2 && d <= 2 && d !== 0}
+					class:past={d < -2}
+					class:future={d > 2}
+					data-active={d === 0}
 					onclick={() => {
 						reader.jumpToWord(w.globalIndex);
-						const m = getMedia(w.globalIndex);
+						const m = reader.media.find((m) => m.triggerAtWord === w.globalIndex);
 						if (m) reader.showMediaItem(m);
 					}}
 				>
 					{w.text}
-					{#if hasMedia(w.globalIndex)}
-						<span class="dot"></span>
-					{/if}
 				</button>
 			{/each}
 		</div>
 	{/each}
 
-	<div class="sp"></div>
+	<div class="pad"></div>
 </div>
 
 <style>
-	.wd {
+	.container {
 		position: fixed;
 		inset: 0;
 		overflow-y: auto;
@@ -110,16 +80,14 @@
 		align-items: center;
 		padding: 0 2rem;
 	}
-	.wd::-webkit-scrollbar {
-		display: none;
-	}
+	.container::-webkit-scrollbar { display: none; }
 
-	.sp {
+	.pad {
 		flex-shrink: 0;
 		height: 50vh;
 	}
 
-	.ln {
+	.line {
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: center;
@@ -128,52 +96,36 @@
 		max-width: 70vw;
 	}
 
-	.w {
+	.word {
 		all: unset;
 		cursor: pointer;
-		position: relative;
 		padding: 0.04em 0.06em;
 		border-radius: 4px;
-		transition:
-			color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-			transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-			filter 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+		color: rgba(255, 255, 255, 0.05);
+		transition: color 0.35s, transform 0.35s, filter 0.35s;
+		transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.w.active {
+	.word.active {
 		color: white;
 		transform: scale(1.08);
 		filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.1));
 	}
-	.w.near-before {
-		color: rgba(255, 255, 255, 0.35);
-	}
-	.w.near-after {
-		color: rgba(255, 255, 255, 0.2);
-	}
-	.w.past {
-		color: rgba(255, 255, 255, 0.12);
-	}
-	.w.future {
-		color: rgba(255, 255, 255, 0.05);
-	}
-	.w:hover:not(.active) {
-		color: rgba(255, 255, 255, 0.45);
-		transition-duration: 0.1s;
+
+	.word.near {
+		color: rgba(255, 255, 255, 0.28);
 	}
 
-	.dot {
-		position: absolute;
-		top: -2px;
-		right: -4px;
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: rgba(140, 180, 255, 0.5);
-		animation: pulse 2s ease-in-out infinite;
+	.word.past {
+		color: rgba(255, 255, 255, 0.12);
 	}
-	@keyframes pulse {
-		0%, 100% { opacity: 0.5; transform: scale(1); }
-		50% { opacity: 1; transform: scale(1.4); }
+
+	.word.future {
+		color: rgba(255, 255, 255, 0.05);
+	}
+
+	.word:hover:not(.active) {
+		color: rgba(255, 255, 255, 0.4);
+		transition-duration: 0.1s;
 	}
 </style>
