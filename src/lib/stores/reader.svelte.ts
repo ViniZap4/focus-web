@@ -48,96 +48,203 @@ And keep your accounts on your thumb-nail.`
 	}
 ];
 
+export interface WordToken {
+	text: string;
+	globalIndex: number;
+	lineIndex: number;
+	wordInLine: number;
+}
+
+export interface LineToken {
+	words: WordToken[];
+	lineIndex: number;
+}
+
+export interface ReaderSettings {
+	fontFamily: string;
+	fontSize: number;
+	letterSpacing: number;
+	lineHeight: number;
+	wpm: number;
+	voice: string;
+}
+
+const DEFAULT_SETTINGS: ReaderSettings = {
+	fontFamily: 'Inter',
+	fontSize: 36,
+	letterSpacing: 0,
+	lineHeight: 2.2,
+	wpm: 200,
+	voice: ''
+};
+
+function loadSettings(): ReaderSettings {
+	if (typeof window === 'undefined') return { ...DEFAULT_SETTINGS };
+	try {
+		const saved = localStorage.getItem('focus-settings');
+		if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+	} catch {}
+	return { ...DEFAULT_SETTINGS };
+}
+
 class ReaderState {
 	text = $state('');
 	title = $state('');
-	lines = $derived(this.text.split('\n').filter((l) => l.trim().length > 0));
-	currentLine = $state(0);
-	isReading = $state(false);
-	mode = $state<'focus' | 'dynamic'>('focus');
-	fontSize = $state(20);
-	autoPlay = $state(false);
-	autoPlaySpeed = $state(3000);
+	currentWord = $state(0);
+	isPlaying = $state(false);
+	isSpeaking = $state(false);
+	showSettings = $state(false);
+	settings = $state<ReaderSettings>(loadSettings());
 
-	private autoPlayInterval: ReturnType<typeof setInterval> | null = null;
+	private speechUtterance: SpeechSynthesisUtterance | null = null;
+	private playTimer: ReturnType<typeof setTimeout> | null = null;
+
+	lines = $derived.by((): LineToken[] => {
+		const rawLines = this.text.split('\n').filter((l) => l.trim().length > 0);
+		let globalIdx = 0;
+		return rawLines.map((line, lineIdx) => {
+			const words = line.split(/\s+/).filter((w) => w.length > 0);
+			const tokens: WordToken[] = words.map((w, wIdx) => ({
+				text: w,
+				globalIndex: globalIdx++,
+				lineIndex: lineIdx,
+				wordInLine: wIdx
+			}));
+			return { words: tokens, lineIndex: lineIdx };
+		});
+	});
+
+	totalWords = $derived(this.lines.reduce((sum, l) => sum + l.words.length, 0));
+
+	currentLineIndex = $derived.by(() => {
+		for (const line of this.lines) {
+			for (const w of line.words) {
+				if (w.globalIndex === this.currentWord) return w.lineIndex;
+			}
+		}
+		return 0;
+	});
+
+	progress = $derived(this.totalWords > 0 ? ((this.currentWord + 1) / this.totalWords) * 100 : 0);
+	isAtEnd = $derived(this.currentWord >= this.totalWords - 1);
+	isAtStart = $derived(this.currentWord === 0);
 
 	setText(title: string, text: string) {
 		this.title = title;
 		this.text = text;
-		this.currentLine = 0;
-		this.isReading = false;
-		this.stopAutoPlay();
-	}
-
-	startReading() {
-		this.currentLine = 0;
-		this.isReading = true;
+		this.currentWord = 0;
+		this.stop();
 	}
 
 	advance() {
-		if (this.currentLine < this.lines.length - 1) {
-			this.currentLine++;
+		if (this.currentWord < this.totalWords - 1) {
+			this.currentWord++;
+		} else {
+			this.stop();
 		}
 	}
 
 	goBack() {
-		if (this.currentLine > 0) {
-			this.currentLine--;
+		if (this.currentWord > 0) {
+			this.currentWord--;
 		}
 	}
 
-	jumpTo(index: number) {
-		if (index >= 0 && index < this.lines.length) {
-			this.currentLine = index;
+	jumpToWord(index: number) {
+		if (index >= 0 && index < this.totalWords) {
+			this.currentWord = index;
 		}
 	}
 
-	toggleMode() {
-		this.mode = this.mode === 'focus' ? 'dynamic' : 'focus';
+	play() {
+		this.isPlaying = true;
+		this.scheduleNext();
+		this.speak();
 	}
 
-	toggleAutoPlay() {
-		this.autoPlay = !this.autoPlay;
-		if (this.autoPlay) {
-			this.autoPlayInterval = setInterval(() => {
-				if (this.currentLine < this.lines.length - 1) {
-					this.advance();
-				} else {
-					this.stopAutoPlay();
-				}
-			}, this.autoPlaySpeed);
+	stop() {
+		this.isPlaying = false;
+		this.isSpeaking = false;
+		if (this.playTimer) {
+			clearTimeout(this.playTimer);
+			this.playTimer = null;
+		}
+		if (typeof window !== 'undefined') {
+			window.speechSynthesis.cancel();
+		}
+	}
+
+	toggle() {
+		if (this.isPlaying) {
+			this.stop();
 		} else {
-			this.stopAutoPlay();
+			this.play();
 		}
 	}
 
-	stopAutoPlay() {
-		this.autoPlay = false;
-		if (this.autoPlayInterval) {
-			clearInterval(this.autoPlayInterval);
-			this.autoPlayInterval = null;
+	private scheduleNext() {
+		if (!this.isPlaying) return;
+		const ms = (60 / this.settings.wpm) * 1000;
+		this.playTimer = setTimeout(() => {
+			if (!this.isPlaying) return;
+			this.advance();
+			if (!this.isAtEnd) {
+				this.scheduleNext();
+			}
+		}, ms);
+	}
+
+	speak() {
+		if (typeof window === 'undefined') return;
+		window.speechSynthesis.cancel();
+
+		const allWords = this.lines.flatMap((l) => l.words);
+		const remaining = allWords.slice(this.currentWord).map((w) => w.text);
+		if (remaining.length === 0) return;
+
+		const utterance = new SpeechSynthesisUtterance(remaining.join(' '));
+		utterance.rate = this.settings.wpm / 180;
+
+		if (this.settings.voice) {
+			const voices = window.speechSynthesis.getVoices();
+			const found = voices.find((v) => v.name === this.settings.voice);
+			if (found) utterance.voice = found;
 		}
+
+		const startWord = this.currentWord;
+		let wordOffset = 0;
+
+		utterance.onboundary = (e) => {
+			if (e.name === 'word') {
+				this.currentWord = startWord + wordOffset;
+				wordOffset++;
+			}
+		};
+
+		utterance.onend = () => {
+			this.isSpeaking = false;
+			this.isPlaying = false;
+		};
+
+		this.isSpeaking = true;
+		this.speechUtterance = utterance;
+		window.speechSynthesis.speak(utterance);
+	}
+
+	saveSettings() {
+		if (typeof window === 'undefined') return;
+		localStorage.setItem('focus-settings', JSON.stringify(this.settings));
+	}
+
+	toggleSettings() {
+		this.showSettings = !this.showSettings;
 	}
 
 	reset() {
+		this.stop();
 		this.text = '';
 		this.title = '';
-		this.currentLine = 0;
-		this.isReading = false;
-		this.stopAutoPlay();
-	}
-
-	get progress() {
-		if (this.lines.length === 0) return 0;
-		return ((this.currentLine + 1) / this.lines.length) * 100;
-	}
-
-	get isAtEnd() {
-		return this.currentLine >= this.lines.length - 1;
-	}
-
-	get isAtStart() {
-		return this.currentLine === 0;
+		this.currentWord = 0;
 	}
 }
 

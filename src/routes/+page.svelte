@@ -1,79 +1,212 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { PageView } from '../blocks/Views/Page';
-	import { Header } from '../blocks/Navigation/Header';
 	import { reader, sampleTexts } from '$lib/stores';
 
 	let customText = $state('');
 	let customTitle = $state('');
 
-	function selectSample(sample: (typeof sampleTexts)[number]) {
+	function select(sample: (typeof sampleTexts)[number]) {
 		reader.setText(sample.title, sample.content);
 		goto('/reader');
 	}
 
-	function startCustom() {
+	function start() {
 		if (!customText.trim()) return;
-		reader.setText(customTitle.trim() || 'Custom Text', customText);
+		reader.setText(customTitle.trim() || 'Untitled', customText);
 		goto('/reader');
 	}
 </script>
 
-<PageView>
-	<div class="flex flex-col items-center w-full max-w-2xl mx-auto px-6 gap-12 py-12">
-		<Header title="Focus" subtitle="read with intention, one line at a time" />
+<div class="home">
+	<header>
+		<h1>Focus</h1>
+		<p>word by word</p>
+	</header>
 
-		<!-- Sample texts -->
-		<section class="w-full">
-			<h2 class="text-sm uppercase tracking-widest text-white/30 mb-4">Choose a text</h2>
-			<div class="flex flex-col gap-3">
-				{#each sampleTexts as sample}
-					<button
-						class="sample-card text-left w-full px-5 py-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-300 cursor-pointer"
-						onclick={() => selectSample(sample)}
-					>
-						<h3 class="text-white/80 font-medium text-base">{sample.title}</h3>
-						<p class="text-white/30 text-sm mt-1 line-clamp-1">
-							{sample.content.split('\n')[0]}
-						</p>
-					</button>
-				{/each}
-			</div>
-		</section>
-
-		<!-- Divider -->
-		<div class="w-full flex items-center gap-4">
-			<div class="flex-1 h-px bg-white/5"></div>
-			<span class="text-white/20 text-xs uppercase tracking-widest">or paste your own</span>
-			<div class="flex-1 h-px bg-white/5"></div>
-		</div>
-
-		<!-- Custom text input -->
-		<section class="w-full flex flex-col gap-3">
-			<input
-				type="text"
-				placeholder="Title (optional)"
-				bind:value={customTitle}
-				class="w-full px-4 py-3 rounded-lg bg-white/[0.03] border border-white/5 text-white/80 placeholder:text-white/20 outline-none focus:border-white/15 transition-colors text-sm"
-			/>
-			<textarea
-				placeholder="Paste your text here..."
-				bind:value={customText}
-				rows="6"
-				class="w-full px-4 py-3 rounded-lg bg-white/[0.03] border border-white/5 text-white/80 placeholder:text-white/20 outline-none focus:border-white/15 transition-colors text-sm resize-none leading-relaxed"
-			></textarea>
-			<button
-				class="self-end px-6 py-2.5 rounded-lg bg-white/10 text-white/80 text-sm border border-white/10 hover:bg-white/15 hover:text-white transition-all duration-300 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-				onclick={startCustom}
-				disabled={!customText.trim()}
-			>
-				Start Reading &rarr;
+	<section class="texts">
+		{#each sampleTexts as sample}
+			<button class="text-card" onclick={() => select(sample)}>
+				<span class="card-title">{sample.title}</span>
+				<span class="card-preview">{sample.content.split('\n')[0]}</span>
 			</button>
-		</section>
+		{/each}
+	</section>
 
-		<!-- Keyboard hint -->
-		<footer class="text-white/15 text-xs text-center">
-			<p>use <kbd class="px-1.5 py-0.5 rounded bg-white/5 font-mono">&darr;</kbd> <kbd class="px-1.5 py-0.5 rounded bg-white/5 font-mono">space</kbd> <kbd class="px-1.5 py-0.5 rounded bg-white/5 font-mono">j/k</kbd> to navigate while reading</p>
-		</footer>
+	<div class="divider">
+		<span>or</span>
 	</div>
-</PageView>
+
+	<section class="custom">
+		<input
+			type="text"
+			placeholder="title"
+			bind:value={customTitle}
+		/>
+		<textarea
+			placeholder="paste your text here..."
+			bind:value={customText}
+			rows="5"
+		></textarea>
+		<button
+			class="start-btn"
+			onclick={start}
+			disabled={!customText.trim()}
+		>
+			read &rarr;
+		</button>
+	</section>
+</div>
+
+<style>
+	.home {
+		min-height: 100vh;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 3rem 1.5rem;
+		gap: 3rem;
+		max-width: 480px;
+		margin: 0 auto;
+	}
+
+	header {
+		text-align: center;
+	}
+
+	header h1 {
+		font-size: 3.5rem;
+		font-weight: 200;
+		letter-spacing: -0.03em;
+		color: rgba(255, 255, 255, 0.9);
+		margin: 0;
+	}
+
+	header p {
+		color: rgba(255, 255, 255, 0.15);
+		font-size: 0.8rem;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		margin: 0.5rem 0 0;
+	}
+
+	.texts {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		width: 100%;
+	}
+
+	.text-card {
+		all: unset;
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 1rem 1.25rem;
+		border-radius: 12px;
+		border: 1px solid rgba(255, 255, 255, 0.03);
+		background: rgba(255, 255, 255, 0.01);
+		transition: all 0.3s ease;
+	}
+
+	.text-card:hover {
+		background: rgba(255, 255, 255, 0.04);
+		border-color: rgba(255, 255, 255, 0.08);
+	}
+
+	.card-title {
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 0.95rem;
+		font-weight: 400;
+	}
+
+	.card-preview {
+		color: rgba(255, 255, 255, 0.15);
+		font-size: 0.75rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.divider {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.divider::before,
+	.divider::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	.divider span {
+		color: rgba(255, 255, 255, 0.1);
+		font-size: 0.7rem;
+		letter-spacing: 0.15em;
+		text-transform: uppercase;
+	}
+
+	.custom {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.custom input,
+	.custom textarea {
+		all: unset;
+		width: 100%;
+		padding: 0.75rem 1rem;
+		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(255, 255, 255, 0.04);
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 0.85rem;
+		transition: border-color 0.2s;
+		box-sizing: border-box;
+	}
+
+	.custom input::placeholder,
+	.custom textarea::placeholder {
+		color: rgba(255, 255, 255, 0.1);
+	}
+
+	.custom input:focus,
+	.custom textarea:focus {
+		border-color: rgba(255, 255, 255, 0.1);
+	}
+
+	.custom textarea {
+		resize: none;
+		line-height: 1.6;
+	}
+
+	.start-btn {
+		all: unset;
+		cursor: pointer;
+		align-self: flex-end;
+		padding: 0.55rem 1.5rem;
+		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.06);
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.8rem;
+		letter-spacing: 0.05em;
+		transition: all 0.3s;
+	}
+
+	.start-btn:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.12);
+		color: rgba(255, 255, 255, 0.9);
+	}
+
+	.start-btn:disabled {
+		opacity: 0.2;
+		cursor: not-allowed;
+	}
+</style>
