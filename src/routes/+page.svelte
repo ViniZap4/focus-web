@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { reader, sampleTexts, THEMES } from '$lib/stores';
-	import type { ThemeId } from '$lib/stores';
+	import type { ThemeId, ReadingSession } from '$lib/stores';
 	import { parseFile, SUPPORTED_EXTENSIONS } from '$lib/parsers';
 	import { onMount } from 'svelte';
 
@@ -12,10 +12,23 @@
 	let error = $state('');
 	let textEl = $state<HTMLTextAreaElement>();
 	let ready = $state(false);
+	let history = $state<ReadingSession[]>([]);
 
 	onMount(() => {
 		requestAnimationFrame(() => { ready = true; });
+		history = reader.loadHistory();
 	});
+
+	function formatTimeAgo(ts: number): string {
+		const diff = Date.now() - ts;
+		const mins = Math.floor(diff / 60000);
+		if (mins < 1) return 'just now';
+		if (mins < 60) return `${mins}m ago`;
+		const hours = Math.floor(mins / 60);
+		if (hours < 24) return `${hours}h ago`;
+		const days = Math.floor(hours / 24);
+		return `${days}d ago`;
+	}
 
 	function start() {
 		if (!customText.trim()) return;
@@ -160,6 +173,26 @@
 			</button>
 		{/each}
 	</div>
+
+	{#if history.length > 0}
+		<div class="history stagger" style="transition-delay:350ms">
+			<span class="history-label">Continue reading</span>
+			<div class="history-list">
+				{#each history.slice(0, 3) as session}
+					<button class="history-item" onclick={() => { /* TODO: would need stored text to resume */ }}>
+						<span class="hi-title">{session.title}</span>
+						<span class="hi-meta">
+							{Math.round((session.currentWord / session.totalWords) * 100)}%
+							· {formatTimeAgo(session.lastRead)}
+						</span>
+						<div class="hi-bar">
+							<div class="hi-fill" style="width:{(session.currentWord / session.totalWords) * 100}%"></div>
+						</div>
+					</button>
+				{/each}
+			</div>
+		</div>
+	{/if}
 
 	<div class="home-bar stagger" style="transition-delay:400ms">
 		<div class="theme-row">
@@ -423,6 +456,78 @@
 	}
 
 	.theme-btn.on .theme-label { color: var(--text-2); }
+
+	/* ── History ───────────────────────────────────── */
+	.history {
+		width: 100%;
+		max-width: 520px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.history-label {
+		font-size: 0.6rem;
+		color: var(--text-4);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		font-weight: 500;
+		padding-left: 0.2rem;
+	}
+
+	.history-list { display: flex; gap: 0.4rem; }
+
+	.history-item {
+		all: unset;
+		cursor: pointer;
+		flex: 1;
+		padding: 0.55rem 0.7rem;
+		border-radius: 12px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		transition: all var(--dur) var(--ease);
+		overflow: hidden;
+	}
+
+	.history-item:hover {
+		border-color: var(--border-h);
+		background: var(--surface-h);
+		transform: translateY(-1px);
+	}
+
+	.history-item:active { transform: scale(0.98); }
+
+	.hi-title {
+		font-size: 0.7rem;
+		color: var(--text-2);
+		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.hi-meta {
+		font-size: 0.55rem;
+		color: var(--text-4);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.hi-bar {
+		height: 2px;
+		border-radius: 1px;
+		background: var(--surface-h);
+		margin-top: 0.1rem;
+	}
+
+	.hi-fill {
+		height: 100%;
+		border-radius: 1px;
+		background: var(--text-3);
+		transition: width var(--dur) var(--ease);
+	}
 
 	/* ── Feedback ──────────────────────────────────── */
 	.error-msg {

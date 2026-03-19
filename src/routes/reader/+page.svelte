@@ -3,7 +3,6 @@
 	import { reader } from '$lib/stores';
 	import { WordDisplay } from '../../blocks/Reader/WordDisplay';
 	import { FloatBar } from '../../blocks/Reader/FloatBar';
-	import { ImageViewer } from '../../blocks/ImageViewer';
 	import { SectionSelector } from '../../blocks/SectionSelector';
 	import { onMount, onDestroy } from 'svelte';
 
@@ -83,6 +82,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{reader.isPlaying ? '▶ ' : ''}{reader.title || 'Focus'}</title>
+</svelte:head>
+
 <svelte:window onkeydown={handleKeydown} />
 
 {#if reader.text}
@@ -90,7 +93,6 @@
 		<WordDisplay />
 		<FloatBar />
 		<SectionSelector />
-		<ImageViewer />
 	</div>
 {/if}
 
