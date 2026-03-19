@@ -24,7 +24,7 @@
 	}
 
 	function select(sample: (typeof sampleTexts)[number]) {
-		reader.setText(sample.title, sample.content, [], sample.lang);
+		reader.setText(sample.title, sample.content, sample.media ?? [], sample.lang);
 		goto('/reader');
 	}
 

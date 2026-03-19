@@ -196,7 +196,7 @@ export function filterVoicesByLang(
 }
 
 /**
- * Get the best default voice for a language.
+ * Get the best default voice for a language, preferring high-quality voices.
  */
 export function getBestVoice(
 	voices: SpeechSynthesisVoice[],
@@ -205,12 +205,28 @@ export function getBestVoice(
 	const filtered = filterVoicesByLang(voices, langCode);
 	if (filtered.length === 0) return null;
 
-	// Prefer default voices, then local voices
-	const defaultVoice = filtered.find((v) => v.default);
-	if (defaultVoice) return defaultVoice;
+	const scored = filtered.map((v) => {
+		let score = 0;
+		const name = v.name.toLowerCase();
 
-	const localVoice = filtered.find((v) => v.localService);
-	if (localVoice) return localVoice;
+		// Strongly prefer high-quality voices
+		if (name.includes('premium')) score += 30;
+		if (name.includes('natural')) score += 25;
+		if (name.includes('enhanced')) score += 20;
+		if (name.includes('wavenet')) score += 15;
 
-	return filtered[0];
+		// Prefer local voices (lower latency)
+		if (v.localService) score += 5;
+
+		// Tiebreaker: prefer system default
+		if (v.default) score += 3;
+
+		// Prefer exact locale match (e.g. en-US vs en-GB)
+		if (v.lang.toLowerCase() === langCode.toLowerCase()) score += 2;
+
+		return { voice: v, score };
+	});
+
+	scored.sort((a, b) => b.score - a.score);
+	return scored[0].voice;
 }

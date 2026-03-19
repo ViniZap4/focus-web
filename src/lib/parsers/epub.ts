@@ -18,15 +18,23 @@ export async function parseEpubFile(
 	try {
 		const buffer = await file.arrayBuffer();
 		if (buffer.byteLength === 0) {
-			throw new Error('File is empty');
+			throw new Error('EPUB file appears to be empty');
+		}
+		// Check ZIP magic bytes (PK\x03\x04)
+		const sig = new Uint8Array(buffer, 0, 4);
+		if (sig[0] !== 0x50 || sig[1] !== 0x4b) {
+			throw new Error(
+				'This file is not a valid EPUB. EPUBs are ZIP archives — this file has a different format.'
+			);
 		}
 		zip = await JSZip.loadAsync(buffer);
 	} catch (err) {
+		if (err instanceof Error && err.message.startsWith('This file')) throw err;
+		if (err instanceof Error && err.message.startsWith('EPUB file')) throw err;
 		const msg = err instanceof Error ? err.message : String(err);
-		if (msg.includes('empty') || msg.includes('Empty')) {
-			throw new Error('EPUB file appears to be empty');
-		}
-		throw new Error(`Could not read EPUB archive. Make sure the file is a valid .epub file. (${msg})`);
+		throw new Error(
+			`Could not read EPUB archive. The file may be corrupted or DRM-protected. (${msg})`
+		);
 	}
 
 	// Validate EPUB: check mimetype
@@ -165,6 +173,12 @@ interface ProcessResult {
 	tables: MediaItem[];
 }
 
+const BLOCK_TAGS = new Set([
+	'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+	'blockquote', 'section', 'article', 'header', 'footer',
+	'li', 'dt', 'dd', 'pre', 'address', 'hr', 'br'
+]);
+
 function processNode(
 	node: Node,
 	zip: JSZip,
@@ -175,13 +189,22 @@ function processNode(
 	const imageQueue: ImageTask[] = [];
 	const tables: MediaItem[] = [];
 	let wordCount = startWordCount;
+	let currentParagraph = '';
+
+	function flushParagraph() {
+		const text = currentParagraph.trim();
+		if (text) {
+			lines.push(text);
+			wordCount += text.split(/\s+/).filter((w) => w.length > 0).length;
+		}
+		currentParagraph = '';
+	}
 
 	function walk(n: Node) {
 		if (n.nodeType === Node.TEXT_NODE) {
-			const text = n.textContent?.trim();
-			if (text) {
-				lines.push(text);
-				wordCount += text.split(/\s+/).filter((w) => w.length > 0).length;
+			const text = n.textContent?.replace(/\s+/g, ' ') || '';
+			if (text.trim()) {
+				currentParagraph += text;
 			}
 			return;
 		}
@@ -193,6 +216,7 @@ function processNode(
 
 		// Images
 		if (tag === 'img' || tag === 'image') {
+			flushParagraph();
 			const src =
 				el.getAttribute('src') ||
 				el.getAttribute('xlink:href') ||
@@ -200,26 +224,19 @@ function processNode(
 				'';
 			if (src && !src.startsWith('data:')) {
 				const imgPath = resolveHref(basePath, src);
-				imageQueue.push({
-					path: imgPath,
-					alt: el.getAttribute('alt') || '',
-					atWord: wordCount
-				});
+				imageQueue.push({ path: imgPath, alt: el.getAttribute('alt') || '', atWord: wordCount });
 			}
 			return;
 		}
 
-		// SVG with embedded images
+		// SVG
 		if (tag === 'svg') {
+			flushParagraph();
 			const imgEl = el.querySelector('image');
 			if (imgEl) {
-				const href =
-					imgEl.getAttribute('href') ||
-					imgEl.getAttributeNS('http://www.w3.org/1999/xlink', 'href') ||
-					'';
+				const href = imgEl.getAttribute('href') || imgEl.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || '';
 				if (href && !href.startsWith('data:')) {
-					const imgPath = resolveHref(basePath, href);
-					imageQueue.push({ path: imgPath, alt: '', atWord: wordCount });
+					imageQueue.push({ path: resolveHref(basePath, href), alt: '', atWord: wordCount });
 				}
 			}
 			return;
@@ -227,17 +244,15 @@ function processNode(
 
 		// Tables
 		if (tag === 'table') {
+			flushParagraph();
 			const rows: string[][] = [];
 			el.querySelectorAll('tr').forEach((tr) => {
 				const cells: string[] = [];
-				tr.querySelectorAll('td, th').forEach((td) => {
-					cells.push(td.textContent?.trim() || '');
-				});
+				tr.querySelectorAll('td, th').forEach((td) => cells.push(td.textContent?.trim() || ''));
 				if (cells.length > 0) rows.push(cells);
 			});
 			if (rows.length > 0) {
 				tables.push({ type: 'table', rows, triggerAtWord: wordCount });
-				// Add table text to reading flow
 				for (const row of rows) {
 					const rowText = row.join(' | ');
 					lines.push(rowText);
@@ -247,32 +262,55 @@ function processNode(
 			return;
 		}
 
-		// Skip certain elements
-		if (['nav', 'aside', 'figure'].includes(tag)) {
-			// For figure, still try to extract images
-			const img = el.querySelector('img, image');
-			if (img) {
-				const src =
-					img.getAttribute('src') ||
-					img.getAttribute('xlink:href') ||
-					img.getAttributeNS('http://www.w3.org/1999/xlink', 'href') ||
-					'';
-				if (src && !src.startsWith('data:')) {
-					const imgPath = resolveHref(basePath, src);
-					const caption = el.querySelector('figcaption')?.textContent?.trim() || '';
-					imageQueue.push({ path: imgPath, alt: caption, atWord: wordCount });
-				}
+		// Links — extract as media + keep text in flow
+		if (tag === 'a') {
+			const href = el.getAttribute('href') || '';
+			if (href && href.startsWith('http')) {
+				flushParagraph();
+				tables.push({
+					type: 'link',
+					href,
+					label: el.textContent?.trim() || href,
+					triggerAtWord: wordCount
+				});
 			}
-			// Still process text inside figure
+			// Process text content normally
+			for (const child of n.childNodes) walk(child);
+			return;
 		}
 
-		// Recurse
-		for (const child of n.childNodes) {
-			walk(child);
+		// Figure — extract images with captions
+		if (tag === 'figure') {
+			flushParagraph();
+			const img = el.querySelector('img, image');
+			if (img) {
+				const src = img.getAttribute('src') || img.getAttribute('xlink:href') || img.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || '';
+				if (src && !src.startsWith('data:')) {
+					const caption = el.querySelector('figcaption')?.textContent?.trim() || '';
+					imageQueue.push({ path: resolveHref(basePath, src), alt: caption, atWord: wordCount });
+				}
+			}
+			return;
 		}
+
+		// Skip nav/aside
+		if (tag === 'nav' || tag === 'aside') return;
+
+		// Block elements — flush paragraph before and after
+		if (BLOCK_TAGS.has(tag)) {
+			flushParagraph();
+			if (tag === 'br' || tag === 'hr') return;
+			for (const child of n.childNodes) walk(child);
+			flushParagraph();
+			return;
+		}
+
+		// Inline elements — keep text in current paragraph
+		for (const child of n.childNodes) walk(child);
 	}
 
 	walk(node);
+	flushParagraph();
 	return { lines, wordCount, imageQueue, tables };
 }
 

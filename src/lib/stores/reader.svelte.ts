@@ -1,6 +1,6 @@
 import { detectLanguage, getBestVoice } from '$lib/parsers/language';
 
-export const sampleTexts = [
+export const sampleTexts: { title: string; lang: string; content: string; media?: MediaItem[] }[] = [
 	{
 		title: 'The Art of Focus',
 		lang: 'en',
@@ -67,6 +67,87 @@ She saw mountains. She saw oceans. She saw faces she had never known.
 And she understood — these were not just stories.
 They were memories of worlds that had been forgotten.
 And now, through her reading, they could live again.`
+	},
+	{
+		title: 'The Web of Knowledge',
+		lang: 'en',
+		content: `The internet has transformed how we access information.
+What once required a trip to the library now takes a single search query.
+Images, videos, and interactive content are woven into every article.
+Consider the structure of a well-organized document.
+It starts with a clear introduction, followed by supporting evidence.
+Tables summarize data. Charts reveal trends. Links connect ideas to their sources.
+A photograph can convey what a thousand words cannot.
+The golden ratio appears throughout nature, from sunflower seeds to galaxy spirals.
+Video has become the dominant medium for learning complex topics.
+From short tutorials to full lectures, moving images teach what static text struggles to explain.
+Lists help organize information into digestible pieces.
+First, they break down complex processes into steps.
+Second, they highlight key points without burying them in paragraphs.
+Third, they create visual breathing room on the page.
+External resources extend the reach of any document.
+Wikipedia alone contains over six million articles in English.
+The best readers know when to follow a link and when to stay focused.
+Data tells stories when presented clearly.
+A simple table comparing features can guide a decision more effectively than pages of prose.
+Reading in the modern age means navigating not just text but a rich landscape of media.
+The skill is not just comprehension but curation — choosing what deserves your attention.
+And that is what focus reading is about.`,
+		media: [
+			{
+				type: 'image',
+				src: 'data:image/svg+xml;base64,' +
+					btoa(`<svg width="480" height="320" xmlns="http://www.w3.org/2000/svg">
+						<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e8d5b7"/><stop offset="100%" stop-color="#c9a96e"/></linearGradient></defs>
+						<rect width="100%" height="100%" fill="url(#g)" rx="16"/>
+						<circle cx="340" cy="100" r="50" fill="#f0e6d0" opacity="0.6"/>
+						<path d="M120 280 Q200 120 280 200 Q360 280 440 180" fill="none" stroke="#8b7355" stroke-width="2" opacity="0.5"/>
+						<text x="50%" y="55%" font-family="Georgia,serif" font-size="20" fill="#5a4a3a" text-anchor="middle">Golden Ratio in Nature</text>
+					</svg>`),
+				alt: 'The golden ratio spiral found in nature',
+				triggerAtWord: 55
+			},
+			{
+				type: 'table',
+				rows: [
+					['Medium', 'Strength', 'Best For'],
+					['Text', 'Depth & nuance', 'Analysis, narrative'],
+					['Image', 'Instant impact', 'Data viz, evidence'],
+					['Video', 'Process & motion', 'Tutorials, demos'],
+					['Audio', 'Passive learning', 'Commute, exercise']
+				],
+				triggerAtWord: 138
+			},
+			{
+				type: 'video',
+				src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+				label: 'How Focus Reading Works',
+				triggerAtWord: 68
+			},
+			{
+				type: 'link',
+				href: 'https://en.wikipedia.org/wiki/Speed_reading',
+				label: 'Wikipedia: Speed Reading',
+				triggerAtWord: 117
+			},
+			{
+				type: 'image',
+				src: 'data:image/svg+xml;base64,' +
+					btoa(`<svg width="480" height="280" xmlns="http://www.w3.org/2000/svg">
+						<rect width="100%" height="100%" fill="#1a1a2e" rx="16"/>
+						<rect x="40" y="220" width="40" height="40" fill="#e94560" rx="4"/>
+						<rect x="100" y="180" width="40" height="80" fill="#0f3460" rx="4"/>
+						<rect x="160" y="140" width="40" height="120" fill="#e94560" rx="4"/>
+						<rect x="220" y="100" width="40" height="160" fill="#0f3460" rx="4"/>
+						<rect x="280" y="60" width="40" height="200" fill="#e94560" rx="4"/>
+						<rect x="340" y="120" width="40" height="140" fill="#0f3460" rx="4"/>
+						<rect x="400" y="80" width="40" height="180" fill="#e94560" rx="4"/>
+						<text x="50%" y="30" font-family="sans-serif" font-size="14" fill="#eee" text-anchor="middle">Reading Trends Over Time</text>
+					</svg>`),
+				alt: 'Chart showing reading trends over time',
+				triggerAtWord: 130
+			}
+		]
 	}
 ];
 
@@ -83,10 +164,12 @@ export interface LineToken {
 }
 
 export interface MediaItem {
-	type: 'image' | 'table';
+	type: 'image' | 'table' | 'video' | 'link';
 	src?: string;
 	alt?: string;
 	rows?: string[][];
+	href?: string;
+	label?: string;
 	triggerAtWord: number;
 }
 
@@ -112,9 +195,13 @@ export interface ReaderSettings {
 	fontSize: number;
 	letterSpacing: number;
 	lineHeight: number;
+	textAlign: 'center' | 'left';
+	maxLineWidth: number;
+	wordGap: number;
 	wpm: number;
 	voice: string;
 	speechPitch: number;
+	speechVolume: number;
 	smoothScroll: boolean;
 	autoDetectLang: boolean;
 }
@@ -125,9 +212,13 @@ const DEFAULT_SETTINGS: ReaderSettings = {
 	fontSize: 42,
 	letterSpacing: 0.5,
 	lineHeight: 2.4,
-	wpm: 200,
+	textAlign: 'center',
+	maxLineWidth: 65,
+	wordGap: 0.3,
+	wpm: 180,
 	voice: '',
 	speechPitch: 1,
+	speechVolume: 0.85,
 	smoothScroll: true,
 	autoDetectLang: true
 };
@@ -287,13 +378,20 @@ class ReaderState {
 			this.isRtl = r.isRtl;
 		}
 
-		// Always pick the best voice for the detected language when it changes
+		// Pick the best voice for the detected language
 		if (typeof window !== 'undefined') {
 			const langChanged = this.detectedLang !== prevLang;
-			const voices = window.speechSynthesis.getVoices();
-			if (voices.length > 0 && (langChanged || !this.settings.voice)) {
-				const best = getBestVoice(voices, this.detectedLang);
-				if (best) this.settings.voice = best.name;
+			const pickVoice = () => {
+				const voices = window.speechSynthesis.getVoices();
+				if (voices.length > 0 && (langChanged || !this.settings.voice)) {
+					const best = getBestVoice(voices, this.detectedLang);
+					if (best) this.settings.voice = best.name;
+				}
+			};
+			pickVoice();
+			// Voices may load async — listen for them
+			if (window.speechSynthesis.getVoices().length === 0) {
+				window.speechSynthesis.addEventListener('voiceschanged', pickVoice, { once: true });
 			}
 		}
 	}
@@ -400,6 +498,26 @@ class ReaderState {
 	// speech engine is currently on. Forward-only guard prevents drift.
 	// Falls back to timer if onboundary never fires.
 
+	private static SPEECH_CHUNK = 150;
+
+	// Natural speech rate multipliers per language base code
+	// Languages with longer words or more syllables per word need slower rates
+	private static LANG_RATE: Record<string, number> = {
+		en: 1.0,
+		es: 0.95,
+		fr: 0.95,
+		de: 0.88,
+		it: 0.95,
+		pt: 0.92,
+		ru: 0.85,
+		ja: 0.8,
+		zh: 0.75,
+		ko: 0.82,
+		ar: 0.85,
+		he: 0.88,
+		hi: 0.85
+	};
+
 	private startSpeechMode(fromWord: number) {
 		this.stopTimer();
 		this.stopSpeech();
@@ -410,7 +528,9 @@ class ReaderState {
 			return;
 		}
 
-		const words = this.allWords.slice(fromWord);
+		// Only speak a chunk, not the entire book
+		const chunkEnd = Math.min(fromWord + ReaderState.SPEECH_CHUNK, this.totalWords);
+		const words = this.allWords.slice(fromWord, chunkEnd);
 		if (words.length === 0) {
 			this.stop();
 			return;
@@ -421,11 +541,9 @@ class ReaderState {
 		const baseWord = fromWord;
 		let gotFirstBoundary = false;
 
-		// Build utterance text and a charStart→wordIndex map
 		const wordTexts = words.map((w) => w.text);
 		const text = wordTexts.join(' ');
 
-		// charStarts[i] = character position where word i starts in `text`
 		const charStarts: number[] = [];
 		let pos = 0;
 		for (const wt of wordTexts) {
@@ -434,14 +552,20 @@ class ReaderState {
 		}
 
 		const utterance = new SpeechSynthesisUtterance(text);
-		utterance.rate = Math.max(0.3, Math.min(3, this.settings.wpm / 180));
+		const baseLang = this.detectedLang.split('-')[0];
+		const langRate = ReaderState.LANG_RATE[baseLang] ?? 1.0;
+		utterance.rate = Math.max(0.3, Math.min(3, (this.settings.wpm / 180) * langRate));
 		utterance.pitch = this.settings.speechPitch;
+		utterance.volume = this.settings.speechVolume;
 		utterance.lang = this.detectedLang;
 
+		const voices = window.speechSynthesis.getVoices();
 		if (this.settings.voice) {
-			const voices = window.speechSynthesis.getVoices();
 			const v = voices.find((v) => v.name === this.settings.voice);
 			if (v) utterance.voice = v;
+		} else if (voices.length > 0) {
+			const best = getBestVoice(voices, this.detectedLang);
+			if (best) utterance.voice = best;
 		}
 
 		utterance.onboundary = (e) => {
@@ -452,7 +576,6 @@ class ReaderState {
 				this.clearFallback();
 			}
 
-			// Find closest word start to e.charIndex (search forward from current)
 			const searchFrom = Math.max(0, this.currentWord - baseWord);
 			let bestIdx = searchFrom;
 			let bestDist = Math.abs(charStarts[searchFrom] - e.charIndex);
@@ -463,12 +586,10 @@ class ReaderState {
 					bestDist = dist;
 					bestIdx = i;
 				}
-				if (charStarts[i] > e.charIndex + 10) break; // past the target, stop
+				if (charStarts[i] > e.charIndex + 10) break;
 			}
 
 			const target = baseWord + bestIdx;
-
-			// Forward-only: never go backwards
 			if (target >= this.currentWord && target < this.totalWords) {
 				this.currentWord = target;
 				this.checkMedia();
@@ -477,12 +598,14 @@ class ReaderState {
 
 		utterance.onend = () => {
 			if (gen !== this.speechGen) return;
-			this.isSpeaking = false;
 			this.clearKeepAlive();
-			if (this.isPlaying) {
-				if (this.currentWord < this.totalWords - 1) {
-					this.currentWord = this.totalWords - 1;
-				}
+			// Chain next chunk if there's more text
+			if (this.isPlaying && this.currentWord < this.totalWords - 1) {
+				const nextWord = Math.min(baseWord + words.length, this.totalWords - 1);
+				if (nextWord > this.currentWord) this.currentWord = nextWord;
+				this.startSpeechMode(this.currentWord);
+			} else {
+				this.isSpeaking = false;
 				this.stop();
 			}
 		};
@@ -497,7 +620,6 @@ class ReaderState {
 		this.isSpeaking = true;
 		window.speechSynthesis.speak(utterance);
 
-		// Chrome 15s workaround
 		this.clearKeepAlive();
 		this.keepAlive = setInterval(() => {
 			const ss = window.speechSynthesis;
@@ -507,7 +629,6 @@ class ReaderState {
 			}
 		}, 10000);
 
-		// Fallback: if no boundary fires within 1.5s, use timer
 		this.fallbackTimeout = setTimeout(() => {
 			if (gen !== this.speechGen) return;
 			if (!gotFirstBoundary && this.isPlaying) {
