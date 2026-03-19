@@ -165,6 +165,11 @@
 		</div>
 
 		<div class="group">
+			<button class="ic" class:active={reader.isBookmarked(reader.currentWord)} onclick={() => reader.toggleBookmark()} title="Bookmark (m)">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill={reader.isBookmarked(reader.currentWord) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.5">
+					<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>
+				</svg>
+			</button>
 			<span class="meta">{reader.currentWord + 1}/{reader.totalWords}{reader.etaMinutes > 0 ? ` · ${reader.etaMinutes}m` : ''}</span>
 			<button class="ic" class:active={showPanel} onclick={() => { showPanel = !showPanel; }} title="Settings">
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">

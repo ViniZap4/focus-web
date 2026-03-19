@@ -101,6 +101,9 @@
 		reader.saveSettings();
 		reader.applyTheme();
 	}
+
+	const wordCount = $derived(customText.trim() ? customText.trim().split(/\s+/).length : 0);
+	const readTime = $derived(wordCount > 0 ? Math.ceil(wordCount / reader.settings.wpm) : 0);
 </script>
 
 <div
@@ -149,6 +152,12 @@
 			</svg>
 		</button>
 	</div>
+
+	{#if wordCount > 0}
+		<span class="word-count stagger" style="transition-delay:120ms">
+			{wordCount.toLocaleString()} words · ~{readTime} min
+		</span>
+	{/if}
 
 	{#if error}
 		<p class="error-msg">{error}</p>
@@ -456,6 +465,13 @@
 	}
 
 	.theme-btn.on .theme-label { color: var(--text-2); }
+
+	.word-count {
+		font-size: 0.6rem;
+		color: var(--text-4);
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.02em;
+	}
 
 	/* ── History ───────────────────────────────────── */
 	.history {
