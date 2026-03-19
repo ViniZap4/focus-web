@@ -154,3 +154,11 @@ body {
 ::selection {
 	background: var(--surface-a);
 }
+
+/* ─── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--dur: 0s;
+		--dur-slow: 0s;
+	}
+}

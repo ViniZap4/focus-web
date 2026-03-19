@@ -44,7 +44,7 @@
 			const targetScrollTop = primary.offsetTop - viewport.clientHeight / 2 + primary.offsetHeight / 2;
 			viewport.scrollTo({
 				top: targetScrollTop,
-				behavior: reader.isPlaying ? 'instant' : 'smooth'
+				behavior: reader.settings.smoothScroll ? (reader.isPlaying ? 'instant' : 'smooth') : 'instant'
 			});
 
 			const pad = 8;
@@ -104,15 +104,15 @@
 			</span>
 
 			{#if item.type === 'image' && item.src}
-				<button class="media-frame img-frame" onclick={() => (zoomImage = item.src ?? null)}>
+				<button class="media-frame img-frame" onclick={() => { zoomImage = item.src ?? null; reader.interactMedia(); }}>
 					<img src={item.src} alt={item.alt || 'Image'} />
 				</button>
 			{/if}
 
 			{#if item.type === 'table' && item.rows}
-				<div class="media-frame table-frame">
+				<button class="media-frame table-frame" onclick={() => reader.interactMedia()}>
 					{@html renderTable(item)}
-				</div>
+				</button>
 			{/if}
 
 			{#if item.type === 'video' && item.src}
@@ -124,9 +124,10 @@
 							title={item.label || 'Video'}
 							allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
 							allowfullscreen
+							onfocus={() => reader.interactMedia()}
 						></iframe>
 					{:else}
-						<a href={item.src} target="_blank" rel="noopener noreferrer" class="ext-link">
+						<a href={item.src} target="_blank" rel="noopener noreferrer" class="ext-link" onclick={() => reader.interactMedia()}>
 							<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" opacity="0.4"><path d="M8 5.14v14.72a1 1 0 001.5.86l11-7.36a1 1 0 000-1.72l-11-7.36A1 1 0 008 5.14z"/></svg>
 							<span>{item.label || 'Open video'}</span>
 						</a>
@@ -135,7 +136,7 @@
 			{/if}
 
 			{#if item.type === 'link' && item.href}
-				<a href={item.href} target="_blank" rel="noopener noreferrer" class="media-frame link-frame">
+				<a href={item.href} target="_blank" rel="noopener noreferrer" class="media-frame link-frame" onclick={() => reader.interactMedia()}>
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 						<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
 					</svg>
@@ -186,7 +187,7 @@
 								const m = reader.media.find((x) => x.triggerAtWord === w.globalIndex);
 								if (m) reader.showMediaItem(m);
 							}}
-						>{w.text}</button>
+						>{#if reader.settings.bionicReading}{@const split = Math.ceil(w.text.length * reader.settings.bionicStrength)}<span class="bb">{w.text.slice(0, split)}</span>{w.text.slice(split)}{:else}{w.text}{/if}</button>
 					{/each}
 				{:else}
 					<span class="line-text" style="text-align:{reader.settings.textAlign}">{line.words.map(w => w.text).join(' ')}</span>
@@ -408,6 +409,7 @@
 		all: unset; cursor: pointer; padding: 0.06em 0.1em; border-radius: 6px; z-index: 2;
 		color: var(--text-5); transition: color 0.2s var(--ease), transform 0.2s var(--ease);
 	}
+	.w .bb { font-weight: 700; }
 	.w.primary { color: var(--text); transform: scale(1.04); }
 	.w.active { color: var(--text); }
 	.w.near { color: var(--text-3); }

@@ -284,10 +284,30 @@
 			</div>
 
 			<!-- Toggles -->
+			<div class="p-section">
+				<label class="toggle-row">
+					<span>Bionic reading</span>
+					<button class="tog" class:on={reader.settings.bionicReading} aria-label="Bionic reading"
+						onclick={() => { reader.settings.bionicReading = !reader.settings.bionicReading; save(); }}>
+						<span class="td"></span>
+					</button>
+				</label>
+				{#if reader.settings.bionicReading}
+					<div class="sl-group">
+						<div class="sl-head"><span class="sl-label">Fixation</span><span class="sl-val">{Math.round(reader.settings.bionicStrength * 100)}%</span></div>
+						<input type="range" min="0.3" max="0.8" step="0.05" bind:value={reader.settings.bionicStrength} oninput={save} />
+					</div>
+				{/if}
+				<div class="sl-group">
+					<div class="sl-head"><span class="sl-label">Sentence pause</span><span class="sl-val">{reader.settings.sentencePause.toFixed(1)}s</span></div>
+					<input type="range" min="0" max="2" step="0.1" bind:value={reader.settings.sentencePause} oninput={save} />
+				</div>
+			</div>
+
 			<div class="p-section no-border">
 				<label class="toggle-row">
-					<span>Pause on media</span>
-					<button class="tog" class:on={reader.settings.pauseOnMedia} aria-label="Pause on media"
+					<span>Pause on interact</span>
+					<button class="tog" class:on={reader.settings.pauseOnMedia} aria-label="Pause on interact"
 						onclick={() => { reader.settings.pauseOnMedia = !reader.settings.pauseOnMedia; save(); }}>
 						<span class="td"></span>
 					</button>

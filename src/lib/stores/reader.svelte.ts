@@ -205,6 +205,18 @@ export interface ReaderSettings {
 	smoothScroll: boolean;
 	autoDetectLang: boolean;
 	pauseOnMedia: boolean;
+	bionicReading: boolean;
+	bionicStrength: number;
+	sentencePause: number;
+}
+
+export interface ReadingSession {
+	title: string;
+	fileName: string;
+	currentWord: number;
+	totalWords: number;
+	lastRead: number;
+	textHash: string;
 }
 
 const DEFAULT_SETTINGS: ReaderSettings = {
@@ -222,7 +234,10 @@ const DEFAULT_SETTINGS: ReaderSettings = {
 	speechVolume: 0.85,
 	smoothScroll: true,
 	autoDetectLang: true,
-	pauseOnMedia: true
+	pauseOnMedia: true,
+	bionicReading: false,
+	bionicStrength: 0.5,
+	sentencePause: 0.3
 };
 
 function loadSettings(): ReaderSettings {
@@ -373,6 +388,7 @@ class ReaderState {
 		this.media = media;
 		this.parsedSections = sections ?? [];
 		this.currentWord = 0;
+		this.lastCheckedWord = 0;
 		this.activeMedia = null;
 
 		const prevLang = this.detectedLang;
@@ -435,25 +451,35 @@ class ReaderState {
 	restart() {
 		this.stop();
 		this.currentWord = 0;
+		this.lastCheckedWord = 0;
 	}
 
 	// ── Media ─────────────────────────────────────────────────────────────
 
+	private lastCheckedWord = 0;
+
 	private checkMedia() {
-		const t = this.media.find((m) => m.triggerAtWord === this.currentWord);
-		if (t) {
-			this.activeMedia = t;
-			if (this.settings.pauseOnMedia && this.isPlaying) {
-				this.pause();
-			}
-		}
+		// Range-based check so media triggers even if timer skips a word
+		const t = this.media.find(
+			(m) => m.triggerAtWord > this.lastCheckedWord && m.triggerAtWord <= this.currentWord
+		);
+		this.lastCheckedWord = this.currentWord;
+		if (t) this.activeMedia = t;
 	}
 
 	dismissMedia() {
 		this.activeMedia = null;
 	}
+
 	showMediaItem(item: MediaItem) {
 		this.activeMedia = item;
+	}
+
+	// Pause when the user actively interacts with media (click image, open link, etc.)
+	interactMedia() {
+		if (this.settings.pauseOnMedia && this.isPlaying) {
+			this.pause();
+		}
 	}
 
 	// ── Playback control ──────────────────────────────────────────────────
@@ -485,6 +511,7 @@ class ReaderState {
 		if (this.isSpeaking && typeof window !== 'undefined') {
 			window.speechSynthesis.pause();
 		}
+		this.saveProgress();
 	}
 
 	stop() {
@@ -494,6 +521,7 @@ class ReaderState {
 		this.stopTimer();
 		this.stopSpeech();
 		this.clearFallback();
+		this.saveProgress();
 	}
 
 	toggle() {
@@ -660,8 +688,7 @@ class ReaderState {
 		this.stopTimer();
 		if (!this.isPlaying) return;
 
-		const ms = Math.max(50, (60 / this.settings.wpm) * 1000);
-		this.timer = setInterval(() => {
+		const tick = () => {
 			if (!this.isPlaying) {
 				this.stopTimer();
 				return;
@@ -669,10 +696,24 @@ class ReaderState {
 			if (this.currentWord < this.totalWords - 1) {
 				this.currentWord++;
 				this.checkMedia();
+
+				// Sentence pause: extra delay after punctuation
+				const word = this.allWords[this.currentWord]?.text || '';
+				const isPunctuation = /[.!?;:]$/.test(word);
+				if (isPunctuation && this.settings.sentencePause > 0) {
+					this.stopTimer();
+					this.timer = setTimeout(() => {
+						if (this.isPlaying) this.startTimerMode();
+					}, this.settings.sentencePause * 1000) as unknown as ReturnType<typeof setInterval>;
+					return;
+				}
 			} else {
 				this.stop();
 			}
-		}, ms);
+		};
+
+		const ms = Math.max(50, (60 / this.settings.wpm) * 1000);
+		this.timer = setInterval(tick, ms);
 	}
 
 	// ── Cleanup helpers ───────────────────────────────────────────────────
@@ -707,9 +748,14 @@ class ReaderState {
 
 	// ── Settings ──────────────────────────────────────────────────────────
 
+	private saveTimer: ReturnType<typeof setTimeout> | null = null;
+
 	saveSettings() {
 		if (typeof window === 'undefined') return;
-		localStorage.setItem('focus-settings', JSON.stringify(this.settings));
+		if (this.saveTimer) clearTimeout(this.saveTimer);
+		this.saveTimer = setTimeout(() => {
+			localStorage.setItem('focus-settings', JSON.stringify(this.settings));
+		}, 300);
 	}
 
 	applyTheme() {
@@ -727,16 +773,48 @@ class ReaderState {
 		if (this.showSections) this.showSettings = false;
 	}
 
+	// ── Reading History ───────────────────────────────────────────────────
+
+	saveProgress() {
+		if (!this.text || typeof window === 'undefined') return;
+		const hash = this.text.slice(0, 100);
+		const sessions: ReadingSession[] = JSON.parse(localStorage.getItem('focus-history') || '[]');
+		const existing = sessions.findIndex((s) => s.textHash === hash);
+		const session: ReadingSession = {
+			title: this.title || 'Untitled',
+			fileName: this.fileName,
+			currentWord: this.currentWord,
+			totalWords: this.totalWords,
+			lastRead: Date.now(),
+			textHash: hash
+		};
+		if (existing >= 0) sessions[existing] = session;
+		else sessions.unshift(session);
+		localStorage.setItem('focus-history', JSON.stringify(sessions.slice(0, 20)));
+	}
+
+	loadHistory(): ReadingSession[] {
+		if (typeof window === 'undefined') return [];
+		try {
+			return JSON.parse(localStorage.getItem('focus-history') || '[]');
+		} catch {
+			return [];
+		}
+	}
+
 	reset() {
+		this.saveProgress();
 		this.stop();
 		this.text = '';
 		this.title = '';
 		this.currentWord = 0;
+		this.lastCheckedWord = 0;
 		this.media = [];
 		this.activeMedia = null;
 		this.fileName = '';
 		this.parseProgress = 0;
 		this.isParsing = false;
+		this.parsedSections = [];
 	}
 }
 
