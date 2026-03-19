@@ -677,6 +677,8 @@ class ReaderState {
 
 			const target = baseWord + bestIdx;
 			if (target >= this.currentWord && target < this.totalWords) {
+				const delta = target - this.currentWord;
+				this.wordsReadThisSession += delta;
 				this.currentWord = target;
 				this.checkMedia();
 			}
@@ -736,6 +738,7 @@ class ReaderState {
 			}
 			if (this.currentWord < this.totalWords - 1) {
 				this.currentWord++;
+				this.wordsReadThisSession++;
 				this.checkMedia();
 
 				// Sentence pause: extra delay after punctuation

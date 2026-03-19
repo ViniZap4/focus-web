@@ -26,6 +26,10 @@
 		reader.stop();
 	});
 
+	function autoFocusAction(node: HTMLElement) {
+		requestAnimationFrame(() => node.focus());
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		// Ctrl+F / Cmd+F: open search
 		if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
@@ -105,12 +109,18 @@
 				break;
 			case 'Escape':
 				e.preventDefault();
-				if (reader.showSections) {
+				if (reader.showSearch) {
+					reader.showSearch = false;
+					reader.search('');
+				} else if (reader.showSections) {
 					reader.showSections = false;
 				} else if (reader.showSettings) {
 					reader.showSettings = false;
 				} else if (reader.activeMedia) {
 					reader.dismissMedia();
+				} else if (reader.settings.zenMode) {
+					reader.settings.zenMode = false;
+					reader.saveSettings();
 				}
 				break;
 		}
@@ -127,7 +137,10 @@
 	<div class="reader" class:ready class:zen={reader.settings.zenMode}>
 		{#if reader.settings.readingMode === 'rsvp'}
 			<div class="rsvp-view">
-				<div class="rsvp-word" style="font-family:'{reader.settings.fontFamily}',system-ui;font-size:{Math.min(reader.settings.fontSize * 1.8, 96)}px">
+				<div class="rsvp-progress">
+					<div class="rsvp-progress-fill" style="width:{reader.progress}%"></div>
+				</div>
+				<div class="rsvp-word" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{Math.min(reader.settings.fontSize * 1.8, 96)}px">
 					{#if reader.settings.bionicReading}
 						{@const w = reader.allWords[reader.currentWord]?.text || ''}
 						{@const s = Math.ceil(w.length * reader.settings.bionicStrength)}
@@ -136,13 +149,19 @@
 						{reader.allWords[reader.currentWord]?.text || ''}
 					{/if}
 				</div>
-				<div class="rsvp-meta">{reader.currentWord + 1} / {reader.totalWords}</div>
+				<div class="rsvp-controls">
+					<span class="rsvp-meta">{reader.currentWord + 1} / {reader.totalWords}</span>
+					<button class="rsvp-btn" onclick={() => reader.toggle()}>
+						{reader.isPlaying ? 'Pause' : 'Play'}
+					</button>
+					<span class="rsvp-meta">{reader.settings.wpm} wpm</span>
+				</div>
 			</div>
 		{:else}
 			<WordDisplay />
 		{/if}
 
-		{#if !reader.settings.zenMode}
+		{#if !reader.settings.zenMode && reader.settings.readingMode !== 'rsvp'}
 			<FloatBar />
 		{/if}
 
@@ -154,6 +173,7 @@
 				<input
 					type="text"
 					placeholder="Search..."
+					use:autoFocusAction
 					value={reader.searchQuery}
 					oninput={(e) => reader.search((e.target as HTMLInputElement).value)}
 					onkeydown={(e) => {
@@ -185,9 +205,7 @@
 	}
 	.reader.ready { opacity: 1; }
 
-	/* ── Zen mode: minimal chrome, vignette focus ── */
-	.zen { cursor: none; }
-	.zen:hover { cursor: default; }
+	/* ── Zen mode ────────────────────────────────────── */
 
 	/* ── RSVP view ─────────────────────────────────── */
 	.rsvp-view {
@@ -213,6 +231,37 @@
 	}
 
 	.rsvp-bold { font-weight: 700; }
+
+	.rsvp-progress {
+		position: absolute;
+		top: 0; left: 0; right: 0;
+		height: 3px;
+		background: var(--surface);
+	}
+	.rsvp-progress-fill {
+		height: 100%;
+		background: var(--text-4);
+		transition: width 0.3s var(--ease);
+	}
+
+	.rsvp-controls {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.rsvp-btn {
+		all: unset; cursor: pointer;
+		padding: 0.4rem 1rem;
+		border-radius: 10px;
+		background: var(--surface-h);
+		color: var(--text-2);
+		font-size: 0.75rem;
+		font-weight: 500;
+		transition: all var(--dur) var(--ease);
+	}
+	.rsvp-btn:hover { background: var(--surface-a); color: var(--text); }
+	.rsvp-btn:active { transform: scale(0.95); }
 
 	.rsvp-meta {
 		color: var(--text-4);
