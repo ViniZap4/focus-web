@@ -4,9 +4,7 @@
 	import { filterVoicesByLang, detectLanguage } from '$lib/parsers';
 	import { onMount } from 'svelte';
 
-	let visible = $state(true);
-	let hideTimer: ReturnType<typeof setTimeout> | null = null;
-	let showPanel = $state(false);
+	const showPanel = $derived(reader.showSettings);
 	let scrubbing = $state(false);
 	let voices: SpeechSynthesisVoice[] = $state([]);
 	let langVoices = $derived(filterVoicesByLang(voices, reader.detectedLang));
@@ -97,28 +95,10 @@
 		reader.jumpToPercent(Math.max(0, Math.min(100, ((x - rect.left) / rect.width) * 100)));
 	}
 
-	// ── Auto-hide ─────────────────────────────────────
-	function resetHide() {
-		visible = true;
-		if (hideTimer) clearTimeout(hideTimer);
-		hideTimer = setTimeout(() => {
-			if (reader.isPlaying && !showPanel && !scrubbing && !reader.showSections) visible = false;
-		}, 3000);
-	}
 
-	$effect(() => {
-		if (!reader.isPlaying) {
-			visible = true;
-			if (hideTimer) clearTimeout(hideTimer);
-		} else {
-			resetHide();
-		}
-	});
 </script>
 
-<svelte:window onmousemove={resetHide} ontouchmove={resetHide} />
-
-<div class="bar" class:hidden={!visible}>
+<div class="bar">
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		bind:this={progEl}
@@ -171,7 +151,7 @@
 				</svg>
 			</button>
 			<span class="meta">{reader.currentWord + 1}/{reader.totalWords}{reader.etaMinutes > 0 ? ` · ${reader.etaMinutes}m` : ''}</span>
-			<button class="ic" class:active={showPanel} onclick={() => { showPanel = !showPanel; }} title="Settings">
+			<button class="ic" class:active={showPanel} onclick={() => reader.toggleSettings()} title="Settings">
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 					<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/>
 					<circle cx="10" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
@@ -185,8 +165,18 @@
 		</div>
 	</div>
 
-	{#if showPanel}
-		<div class="panel">
+</div>
+
+{#if showPanel}
+	<button class="settings-backdrop" onclick={() => reader.toggleSettings()} aria-label="Close settings"></button>
+	<div class="settings-side">
+		<div class="settings-head">
+			<span>Settings</span>
+			<button class="settings-close" onclick={() => reader.toggleSettings()} aria-label="Close">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			</button>
+		</div>
+		<div class="settings-body">
 			<!-- Theme -->
 			<div class="p-section">
 				<div class="p-grid themes">
@@ -382,8 +372,8 @@
 				<span><kbd>⌘F</kbd> search</span>
 			</div>
 		</div>
-	{/if}
-</div>
+	</div>
+{/if}
 
 <style>
 	.bar {
@@ -407,12 +397,6 @@
 			border-color var(--dur-slow) var(--ease),
 			box-shadow var(--dur-slow) var(--ease);
 	}
-	.bar.hidden {
-		opacity: 0;
-		transform: translateX(-50%) translateY(1rem);
-		pointer-events: none;
-	}
-
 	/* ── Progress scrubber ─────────────────────────── */
 	.prog {
 		height: 4px;
@@ -511,20 +495,66 @@
 		padding: 0 0.15rem;
 	}
 
-	/* ── Settings panel ───────────────────────────── */
-	.panel {
-		padding: 0.7rem 0.9rem 0.8rem;
-		border-top: 1px solid var(--border);
+	/* ── Settings side panel ──────────────────────── */
+	.settings-backdrop {
+		all: unset;
+		position: fixed;
+		inset: 0;
+		z-index: 150;
+	}
+
+	.settings-side {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: min(88vw, 340px);
+		background: var(--glass);
+		backdrop-filter: blur(30px) saturate(1.4);
+		-webkit-backdrop-filter: blur(30px) saturate(1.4);
+		border-left: 1px solid var(--border);
+		z-index: 151;
 		display: flex;
 		flex-direction: column;
-		gap: 0.55rem;
-		animation: slideUp 0.35s var(--ease);
-		max-height: 55vh;
-		overflow-y: auto;
-		scrollbar-width: none;
+		box-shadow: -8px 0 32px rgba(0, 0, 0, 0.06);
+		animation: slideInRight 0.35s var(--ease);
+		transition: background var(--dur-slow) var(--ease), border-color var(--dur-slow) var(--ease);
 	}
-	.panel::-webkit-scrollbar { display: none; }
-	@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } }
+
+	@keyframes slideInRight { from { transform: translateX(100%); } }
+
+	.settings-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1rem 1.1rem 0.7rem;
+		color: var(--text);
+		font-size: 0.85rem;
+		font-weight: 600;
+	}
+
+	.settings-close {
+		all: unset; cursor: pointer;
+		width: 30px; height: 30px;
+		display: flex; align-items: center; justify-content: center;
+		border-radius: 8px;
+		color: var(--text-3);
+		transition: all var(--dur) var(--ease);
+	}
+	.settings-close:hover { color: var(--text); background: var(--surface); }
+	.settings-close:active { transform: scale(0.93); }
+
+	.settings-body {
+		flex: 1;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		padding: 0.5rem 1.1rem 1.5rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+	.settings-body::-webkit-scrollbar { width: 3px; }
+	.settings-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 	.p-section {
 		display: flex;

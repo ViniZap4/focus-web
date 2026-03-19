@@ -204,15 +204,13 @@
 		{/each}
 	</div>
 
-	<div class="home-bar stagger" style="transition-delay:400ms">
-		<div class="theme-row">
-			{#each THEMES as t}
-				<button class="theme-btn" class:on={reader.settings.theme === t.id} onclick={() => setTheme(t.id)} title={t.label}>
-					<span class="theme-swatch" style="background:{t.preview}"></span>
-					<span class="theme-label">{t.label}</span>
-				</button>
-			{/each}
-		</div>
+	<div class="theme-bar stagger" style="transition-delay:400ms">
+		{#each THEMES as t}
+			<button class="theme-opt" class:on={reader.settings.theme === t.id} onclick={() => setTheme(t.id)} title={t.label}>
+				<span class="to-swatch" style="background:{t.preview}"></span>
+				<span class="to-label">{t.label}</span>
+			</button>
+		{/each}
 	</div>
 </div>
 
@@ -374,30 +372,39 @@
 	}
 
 	/* ── Theme bar ─────────────────────────────────── */
-	.home-bar {
-		display: flex; align-items: center;
-		padding: 0.25rem 0.3rem; border-radius: 14px;
-		border: 1px solid var(--border); background: var(--surface);
-		transition: background-color var(--dur-slow) var(--ease), border-color var(--dur-slow) var(--ease);
+	.theme-bar {
+		display: flex;
+		gap: 0.35rem;
+		flex-wrap: wrap;
+		justify-content: center;
 	}
 
-	.theme-row { display: flex; gap: 0.15rem; align-items: center; }
-
-	.theme-btn {
+	.theme-opt {
 		all: unset; cursor: pointer;
-		display: flex; align-items: center; gap: 0.25rem;
-		padding: 0.2rem 0.4rem 0.2rem 0.2rem; border-radius: 8px;
+		display: flex; flex-direction: column;
+		align-items: center; gap: 0.3rem;
+		padding: 0.4rem 0.5rem;
+		border-radius: 10px;
 		border: 1.5px solid transparent;
 		transition: all var(--dur) var(--ease);
 	}
-	.theme-btn:hover { background: var(--surface-h); }
-	.theme-btn:active { transform: scale(0.95); }
-	.theme-btn.on { border-color: var(--text-3); background: var(--surface-h); }
+	.theme-opt:hover { background: var(--surface); }
+	.theme-opt:active { transform: scale(0.95); }
+	.theme-opt.on { border-color: var(--text-3); background: var(--surface-h); }
 
-	.theme-swatch { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-h); flex-shrink: 0; }
-	.theme-btn.on .theme-swatch { border-color: var(--text-3); }
-	.theme-label { font-size: 0.55rem; color: var(--text-4); font-weight: 500; }
-	.theme-btn.on .theme-label { color: var(--text-2); }
+	.to-swatch {
+		width: 24px; height: 24px;
+		border-radius: 50%;
+		border: 2px solid var(--border-h);
+		transition: border-color var(--dur-slow) var(--ease);
+	}
+	.theme-opt.on .to-swatch { border-color: var(--text-3); }
+
+	.to-label {
+		font-size: 0.6rem; color: var(--text-4); font-weight: 500;
+		transition: color var(--dur-slow) var(--ease);
+	}
+	.theme-opt.on .to-label { color: var(--text-2); }
 
 	/* ── Feedback ──────────────────────────────────── */
 	.error-msg { color: var(--error); font-size: 0.8rem; margin: 0; }
