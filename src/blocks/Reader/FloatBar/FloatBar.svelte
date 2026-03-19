@@ -513,11 +513,11 @@
 
 	/* ── Settings panel ───────────────────────────── */
 	.panel {
-		padding: 0.65rem 0.85rem 0.75rem;
+		padding: 0.7rem 0.9rem 0.8rem;
 		border-top: 1px solid var(--border);
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.55rem;
 		animation: slideUp 0.35s var(--ease);
 		max-height: 55vh;
 		overflow-y: auto;
@@ -529,13 +529,13 @@
 	.p-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
-		padding-bottom: 0.5rem;
+		gap: 0.45rem;
+		padding-bottom: 0.55rem;
 		border-bottom: 1px solid var(--border);
 	}
 	.p-section.no-border { border-bottom: none; padding-bottom: 0; }
 
-	.p-label { color: var(--text-3); font-size: 0.6rem; font-weight: 500; letter-spacing: 0.04em; }
+	.p-label { color: var(--text-2); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.03em; }
 
 	.themes { display: flex; gap: 0.3rem; flex-wrap: wrap; }
 	.theme-card {
@@ -561,11 +561,11 @@
 	.tc-name { font-size: 0.55rem; color: var(--text-4); font-weight: 500; transition: color var(--dur-slow) var(--ease); }
 	.theme-card.on .tc-name { color: var(--text-2); }
 
-	.chips { display: flex; gap: 0.25rem; }
+	.chips { display: flex; gap: 0.25rem; flex-wrap: wrap; }
 	.chip {
 		all: unset; cursor: pointer;
-		padding: 0.3rem 0.6rem; border-radius: 8px;
-		font-size: 0.65rem; color: var(--text-3);
+		padding: 0.35rem 0.7rem; border-radius: 8px;
+		font-size: 0.72rem; color: var(--text-3);
 		border: 1px solid var(--border);
 		transition: all var(--dur) var(--ease);
 	}
@@ -573,20 +573,20 @@
 	.chip:active { transform: scale(0.95); }
 	.chip.on { color: var(--text); background: var(--surface-h); border-color: var(--border-h); }
 
-	.p-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+	.p-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
 
-	.sl-group { display: flex; flex-direction: column; gap: 0.25rem; }
+	.sl-group { display: flex; flex-direction: column; gap: 0.3rem; }
 	.sl-head { display: flex; justify-content: space-between; align-items: baseline; }
-	.sl-label { color: var(--text-3); font-size: 0.6rem; font-weight: 500; }
-	.sl-val { color: var(--text-4); font-size: 0.55rem; font-family: monospace; font-variant-numeric: tabular-nums; }
+	.sl-label { color: var(--text-2); font-size: 0.68rem; font-weight: 500; }
+	.sl-val { color: var(--text-3); font-size: 0.62rem; font-family: monospace; font-variant-numeric: tabular-nums; }
 	.sl-group input[type='range'] { width: 100%; accent-color: var(--text-3); height: 4px; }
 
 	.voice-row { display: flex; gap: 0.3rem; }
 	.voice-row select {
 		flex: 1;
 		background: var(--surface); border: 1px solid var(--border);
-		color: var(--text-2); padding: 0.35rem 0.5rem; border-radius: 9px;
-		font-size: 0.65rem; outline: none;
+		color: var(--text-2); padding: 0.4rem 0.55rem; border-radius: 9px;
+		font-size: 0.72rem; outline: none;
 		transition: border-color var(--dur) var(--ease);
 	}
 	.voice-row select:focus { border-color: var(--border-h); }
@@ -604,8 +604,8 @@
 
 	.toggle-row {
 		display: flex; align-items: center; justify-content: space-between;
-		padding: 0.2rem 0;
-		color: var(--text-2); font-size: 0.65rem; cursor: default;
+		padding: 0.25rem 0;
+		color: var(--text-2); font-size: 0.72rem; cursor: default;
 	}
 	.tog {
 		all: unset; cursor: pointer;
@@ -623,11 +623,11 @@
 	}
 	.tog.on .td { left: 17px; background: var(--bg); }
 
-	.keys { display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; padding-top: 0.2rem; }
-	.keys span { color: var(--text-5); font-size: 0.5rem; white-space: nowrap; }
+	.keys { display: flex; flex-wrap: wrap; gap: 0.3rem 0.6rem; padding-top: 0.3rem; }
+	.keys span { color: var(--text-4); font-size: 0.6rem; white-space: nowrap; }
 	.keys kbd {
-		background: var(--surface); color: var(--text-4);
-		padding: 0.05rem 0.2rem; border-radius: 3px;
-		font-family: monospace; font-size: 0.45rem;
+		background: var(--surface); color: var(--text-3);
+		padding: 0.1rem 0.25rem; border-radius: 4px;
+		font-family: monospace; font-size: 0.55rem;
 	}
 </style>

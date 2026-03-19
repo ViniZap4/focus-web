@@ -223,6 +223,7 @@ export interface ReadingSession {
 	totalWords: number;
 	lastRead: number;
 	textHash: string;
+	textPreview: string;
 }
 
 export interface Bookmark {
@@ -827,11 +828,29 @@ class ReaderState {
 			currentWord: this.currentWord,
 			totalWords: this.totalWords,
 			lastRead: Date.now(),
-			textHash: hash
+			textHash: hash,
+			textPreview: this.text.slice(0, 200).replace(/\n/g, ' ')
 		};
 		if (existing >= 0) sessions[existing] = session;
 		else sessions.unshift(session);
 		localStorage.setItem('focus-history', JSON.stringify(sessions.slice(0, 20)));
+
+		// Store the full text separately for resume (limited to ~2MB per entry)
+		if (this.text.length < 2_000_000) {
+			localStorage.setItem('focus-text-' + hash.replace(/\W/g, '').slice(0, 30), this.text);
+		}
+	}
+
+	resumeSession(session: ReadingSession): boolean {
+		const key = 'focus-text-' + session.textHash.replace(/\W/g, '').slice(0, 30);
+		const text = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+		if (!text) return false;
+		this.setText(session.title, text);
+		this.fileName = session.fileName;
+		this.currentWord = Math.min(session.currentWord, this.totalWords - 1);
+		this.lastCheckedWord = this.currentWord;
+		this.loadBookmarks();
+		return true;
 	}
 
 	loadHistory(): ReadingSession[] {
