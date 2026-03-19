@@ -214,6 +214,7 @@ export interface ReaderSettings {
 	dyslexiaFont: boolean;
 	speedRamp: boolean;
 	speedRampMax: number;
+	mediaDisplay: 'inline' | 'modal';
 }
 
 export interface ReadingSession {
@@ -263,7 +264,8 @@ const DEFAULT_SETTINGS: ReaderSettings = {
 	zenMode: false,
 	dyslexiaFont: false,
 	speedRamp: false,
-	speedRampMax: 400
+	speedRampMax: 400,
+	mediaDisplay: 'inline' as 'inline' | 'modal'
 };
 
 function loadSettings(): ReaderSettings {

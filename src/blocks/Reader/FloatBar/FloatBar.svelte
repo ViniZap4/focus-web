@@ -98,7 +98,7 @@
 
 </script>
 
-<div class="bar" class:bar-hidden={reader.settings.zenMode || reader.settings.readingMode === 'rsvp'}>
+<div class="bar" class:bar-hidden={reader.settings.zenMode}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		bind:this={progEl}
@@ -330,6 +330,15 @@
 						<input type="range" min="200" max="600" step="20" bind:value={reader.settings.speedRampMax} oninput={save} />
 					</div>
 				{/if}
+			</div>
+
+		<!-- Media display -->
+			<div class="p-section">
+				<span class="p-label">Media display</span>
+				<div class="chips">
+					<button class="chip" class:on={reader.settings.mediaDisplay === 'inline'} onclick={() => { reader.settings.mediaDisplay = 'inline'; save(); }}>Side panel</button>
+					<button class="chip" class:on={reader.settings.mediaDisplay === 'modal'} onclick={() => { reader.settings.mediaDisplay = 'modal'; save(); }}>Center modal</button>
+				</div>
 			</div>
 
 			<div class="p-section no-border">
