@@ -505,7 +505,10 @@ class ReaderState {
 			(m) => m.triggerAtWord > this.lastCheckedWord && m.triggerAtWord <= this.currentWord
 		);
 		this.lastCheckedWord = this.currentWord;
-		if (t) this.activeMedia = t;
+		if (t) {
+			this.activeMedia = t;
+			this.showSettings = false; // media takes over the left panel
+		}
 	}
 
 	dismissMedia() {
@@ -812,7 +815,10 @@ class ReaderState {
 
 	toggleSettings() {
 		this.showSettings = !this.showSettings;
-		if (this.showSettings) this.showSections = false;
+		if (this.showSettings) {
+			this.showSections = false;
+			this.activeMedia = null; // close media so settings shows in left panel
+		}
 	}
 
 	toggleSections() {

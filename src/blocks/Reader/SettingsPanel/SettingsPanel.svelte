@@ -149,51 +149,110 @@
 </div>
 
 <style>
-	.sb { display: flex; flex-direction: column; gap: 0.6rem; }
+	.sb { display: flex; flex-direction: column; gap: 0.8rem; }
 
-	.s { display: flex; flex-direction: column; gap: 0.4rem; padding-bottom: 0.55rem; border-bottom: 1px solid var(--border); }
+	.s {
+		display: flex; flex-direction: column; gap: 0.5rem;
+		padding-bottom: 0.7rem;
+		border-bottom: 1px solid var(--border);
+	}
 	.s.nb { border-bottom: none; padding-bottom: 0; }
 
-	.lb { color: var(--text-2); font-size: 0.7rem; font-weight: 600; }
+	.lb { color: var(--text-2); font-size: 0.78rem; font-weight: 600; margin-bottom: 0.1rem; }
 
-	.themes { display: flex; gap: 0.2rem; flex-wrap: wrap; }
-	.tc { all: unset; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 0.2rem; padding: 0.3rem; border-radius: 8px; border: 1.5px solid transparent; transition: all var(--dur) var(--ease); flex: 1; min-width: 38px; }
+	/* ── Themes ── */
+	.themes { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+	.tc {
+		all: unset; cursor: pointer;
+		display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+		padding: 0.4rem 0.3rem; border-radius: 10px;
+		border: 1.5px solid transparent;
+		transition: all var(--dur) var(--ease);
+		flex: 1; min-width: 40px;
+	}
 	.tc:hover { background: var(--surface); }
 	.tc:active { transform: scale(0.95); }
 	.tc.on { border-color: var(--text-3); background: var(--surface-h); }
-	.tc-sw { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border-h); }
+	.tc-sw { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border-h); }
 	.tc.on .tc-sw { border-color: var(--text-3); }
-	.tc-nm { font-size: 0.5rem; color: var(--text-4); font-weight: 500; }
+	.tc-nm { font-size: 0.58rem; color: var(--text-4); font-weight: 500; }
 	.tc.on .tc-nm { color: var(--text-2); }
 
-	.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+	/* ── Grid ── */
+	.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
 
-	.ch { display: flex; gap: 0.2rem; flex-wrap: wrap; }
-	.c { all: unset; cursor: pointer; padding: 0.3rem 0.55rem; border-radius: 7px; font-size: 0.68rem; color: var(--text-3); border: 1px solid var(--border); transition: all var(--dur) var(--ease); }
-	.c:hover { color: var(--text-2); border-color: var(--border-h); }
+	/* ── Chips ── */
+	.ch { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+	.c {
+		all: unset; cursor: pointer;
+		padding: 0.4rem 0.7rem; border-radius: 8px;
+		font-size: 0.78rem; color: var(--text-3);
+		border: 1px solid var(--border);
+		transition: all var(--dur) var(--ease);
+	}
+	.c:hover { color: var(--text-2); border-color: var(--border-h); background: var(--surface); }
 	.c:active { transform: scale(0.95); }
 	.c.on { color: var(--text); background: var(--surface-h); border-color: var(--border-h); }
 
-	.sl { display: flex; flex-direction: column; gap: 0.25rem; }
+	/* ── Sliders ── */
+	.sl { display: flex; flex-direction: column; gap: 0.35rem; }
 	.sh { display: flex; justify-content: space-between; align-items: baseline; }
-	.sn { color: var(--text-2); font-size: 0.65rem; font-weight: 500; }
-	.sv { color: var(--text-3); font-size: 0.6rem; font-family: monospace; font-variant-numeric: tabular-nums; }
-	.sl input[type='range'] { width: 100%; accent-color: var(--text-3); height: 4px; }
+	.sn { color: var(--text-2); font-size: 0.75rem; font-weight: 500; }
+	.sv { color: var(--text-3); font-size: 0.68rem; font-family: monospace; font-variant-numeric: tabular-nums; }
+	.sl input[type='range'] { width: 100%; accent-color: var(--text-3); height: 5px; }
 
-	.vr { display: flex; gap: 0.3rem; }
-	.vr select { flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--text-2); padding: 0.35rem 0.5rem; border-radius: 8px; font-size: 0.68rem; outline: none; }
-	.vp { all: unset; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--text-3); border: 1px solid var(--border); transition: all var(--dur) var(--ease); }
+	/* ── Voice ── */
+	.vr { display: flex; gap: 0.35rem; }
+	.vr select {
+		flex: 1; background: var(--surface); border: 1px solid var(--border);
+		color: var(--text-2); padding: 0.45rem 0.6rem; border-radius: 9px;
+		font-size: 0.78rem; outline: none;
+	}
+	.vp {
+		all: unset; cursor: pointer;
+		width: 36px; height: 36px;
+		display: flex; align-items: center; justify-content: center;
+		border-radius: 9px; color: var(--text-3);
+		border: 1px solid var(--border);
+		transition: all var(--dur) var(--ease);
+	}
 	.vp:hover { color: var(--text-2); background: var(--surface); }
+	.vp:active { transform: scale(0.93); }
 
-	.mg { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; }
-	.mc { all: unset; cursor: pointer; text-align: center; padding: 0.35rem; border-radius: 8px; font-size: 0.65rem; font-weight: 500; color: var(--text-3); border: 1.5px solid var(--border); transition: all var(--dur) var(--ease); }
+	/* ── Mode grid ── */
+	.mg { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+	.mc {
+		all: unset; cursor: pointer; text-align: center;
+		padding: 0.5rem 0.3rem; border-radius: 9px;
+		font-size: 0.75rem; font-weight: 500;
+		color: var(--text-3);
+		border: 1.5px solid var(--border);
+		transition: all var(--dur) var(--ease);
+	}
 	.mc:hover { border-color: var(--border-h); background: var(--surface); }
 	.mc:active { transform: scale(0.97); }
 	.mc.on { border-color: var(--text-3); background: var(--surface-h); color: var(--text); }
 
-	.tr { display: flex; align-items: center; justify-content: space-between; padding: 0.2rem 0; color: var(--text-2); font-size: 0.68rem; cursor: default; }
-	.tg { all: unset; cursor: pointer; width: 32px; height: 18px; border-radius: 9px; background: var(--surface-h); position: relative; transition: background var(--dur) var(--ease); }
+	/* ── Toggles ── */
+	.tr {
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 0.3rem 0;
+		color: var(--text-2); font-size: 0.78rem;
+		cursor: default;
+	}
+	.tg {
+		all: unset; cursor: pointer;
+		width: 36px; height: 20px; border-radius: 10px;
+		background: var(--surface-h); position: relative;
+		transition: background var(--dur) var(--ease);
+	}
 	.tg.on { background: var(--text-3); }
-	.td { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--glass); box-shadow: 0 1px 3px rgba(0,0,0,0.12); transition: all var(--dur) var(--ease); }
-	.tg.on .td { left: 16px; background: var(--bg); }
+	.td {
+		position: absolute; top: 3px; left: 3px;
+		width: 14px; height: 14px; border-radius: 50%;
+		background: var(--glass);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+		transition: all var(--dur) var(--ease);
+	}
+	.tg.on .td { left: 19px; background: var(--bg); }
 </style>
