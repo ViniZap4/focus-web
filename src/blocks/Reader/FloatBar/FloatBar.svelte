@@ -334,6 +334,8 @@
 				<span><kbd>↓↑</kbd> line</span>
 				<span><kbd>p</kbd> play</span>
 				<span><kbd>s</kbd> speak</span>
+				<span><kbd>+</kbd><kbd>-</kbd> speed</span>
+				<span><kbd>b</kbd> bionic</span>
 			</div>
 		</div>
 	{/if}

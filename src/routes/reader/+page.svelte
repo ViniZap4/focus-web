@@ -68,6 +68,25 @@
 					reader.play();
 				}
 				break;
+			case '+':
+			case '=':
+				e.preventDefault();
+				reader.settings.wpm = Math.min(600, reader.settings.wpm + 20);
+				reader.saveSettings();
+				if (reader.isSpeaking) reader.restartSpeech();
+				break;
+			case '-':
+			case '_':
+				e.preventDefault();
+				reader.settings.wpm = Math.max(60, reader.settings.wpm - 20);
+				reader.saveSettings();
+				if (reader.isSpeaking) reader.restartSpeech();
+				break;
+			case 'b':
+				e.preventDefault();
+				reader.settings.bionicReading = !reader.settings.bionicReading;
+				reader.saveSettings();
+				break;
 			case 'Escape':
 				e.preventDefault();
 				if (reader.showSections) {
