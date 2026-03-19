@@ -125,7 +125,11 @@ export interface LanguageResult {
 }
 
 export function detectLanguage(text: string): LanguageResult {
-	const sample = text.slice(0, 5000);
+	// Sample from beginning + middle for better detection on long texts
+	const len = text.length;
+	const sample = len <= 10000
+		? text.slice(0, 10000)
+		: text.slice(0, 5000) + text.slice(Math.floor(len / 2), Math.floor(len / 2) + 5000);
 	const scores = new Map<string, number>();
 
 	for (const profile of PROFILES) {

@@ -1,9 +1,16 @@
 import type { MediaItem } from '$lib/stores/reader.svelte';
 
+export interface ParsedSection {
+	title: string;
+	wordIndex: number;
+	level: number;
+}
+
 export interface ParseResult {
 	title: string;
 	text: string;
 	media: MediaItem[];
+	sections?: ParsedSection[];
 	detectedLang?: string;
 }
 

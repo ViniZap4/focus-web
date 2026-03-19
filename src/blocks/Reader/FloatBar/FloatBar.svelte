@@ -286,6 +286,13 @@
 			<!-- Toggles -->
 			<div class="p-section no-border">
 				<label class="toggle-row">
+					<span>Pause on media</span>
+					<button class="tog" class:on={reader.settings.pauseOnMedia} aria-label="Pause on media"
+						onclick={() => { reader.settings.pauseOnMedia = !reader.settings.pauseOnMedia; save(); }}>
+						<span class="td"></span>
+					</button>
+				</label>
+				<label class="toggle-row">
 					<span>Smooth scroll</span>
 					<button class="tog" class:on={reader.settings.smoothScroll} aria-label="Smooth scroll"
 						onclick={() => { reader.settings.smoothScroll = !reader.settings.smoothScroll; save(); }}>

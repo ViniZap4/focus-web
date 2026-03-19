@@ -204,6 +204,7 @@ export interface ReaderSettings {
 	speechVolume: number;
 	smoothScroll: boolean;
 	autoDetectLang: boolean;
+	pauseOnMedia: boolean;
 }
 
 const DEFAULT_SETTINGS: ReaderSettings = {
@@ -220,7 +221,8 @@ const DEFAULT_SETTINGS: ReaderSettings = {
 	speechPitch: 1,
 	speechVolume: 0.85,
 	smoothScroll: true,
-	autoDetectLang: true
+	autoDetectLang: true,
+	pauseOnMedia: true
 };
 
 function loadSettings(): ReaderSettings {
@@ -265,6 +267,7 @@ class ReaderState {
 	isRtl = $state(false);
 	parseProgress = $state(0);
 	isParsing = $state(false);
+	parsedSections = $state<Section[]>([]);
 
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private keepAlive: ReturnType<typeof setInterval> | null = null;
@@ -318,6 +321,10 @@ class ReaderState {
 	});
 
 	sections = $derived.by((): Section[] => {
+		// Prefer sections from parser (EPUB headings, PDF heading detection)
+		if (this.parsedSections.length > 0) return this.parsedSections;
+
+		// Fallback: auto-detect from text structure
 		const rawLines = this.text.split('\n');
 		const sections: Section[] = [];
 		let gi = 0;
@@ -359,11 +366,12 @@ class ReaderState {
 
 	// ── Load ──────────────────────────────────────────────────────────────
 
-	setText(title: string, text: string, media: MediaItem[] = [], lang?: string) {
+	setText(title: string, text: string, media: MediaItem[] = [], lang?: string, sections?: Section[]) {
 		this.stop();
 		this.title = title;
 		this.text = text;
 		this.media = media;
+		this.parsedSections = sections ?? [];
 		this.currentWord = 0;
 		this.activeMedia = null;
 
@@ -433,7 +441,12 @@ class ReaderState {
 
 	private checkMedia() {
 		const t = this.media.find((m) => m.triggerAtWord === this.currentWord);
-		if (t) this.activeMedia = t;
+		if (t) {
+			this.activeMedia = t;
+			if (this.settings.pauseOnMedia && this.isPlaying) {
+				this.pause();
+			}
+		}
 	}
 
 	dismissMedia() {
@@ -554,7 +567,11 @@ class ReaderState {
 		const utterance = new SpeechSynthesisUtterance(text);
 		const baseLang = this.detectedLang.split('-')[0];
 		const langRate = ReaderState.LANG_RATE[baseLang] ?? 1.0;
-		utterance.rate = Math.max(0.3, Math.min(3, (this.settings.wpm / 180) * langRate));
+		// Use logarithmic scaling for more natural feel at extreme WPM values
+		// 180 wpm = rate 1.0, 360 wpm = rate 1.7 (not 2.0), 60 wpm = rate 0.5
+		const rawRate = this.settings.wpm / 180;
+		const smoothRate = rawRate <= 1 ? rawRate : 1 + Math.log2(rawRate);
+		utterance.rate = Math.max(0.3, Math.min(2.5, smoothRate * langRate));
 		utterance.pitch = this.settings.speechPitch;
 		utterance.volume = this.settings.speechVolume;
 		utterance.lang = this.detectedLang;

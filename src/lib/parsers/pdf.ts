@@ -1,5 +1,5 @@
 import type { MediaItem } from '$lib/stores/reader.svelte';
-import type { ParseResult } from './text';
+import type { ParseResult, ParsedSection } from './text';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 const MAX_IMAGE_DIMENSION = 4096;
@@ -49,10 +49,12 @@ export async function parsePdfFile(
 
 	const lines: string[] = [];
 	const media: MediaItem[] = [];
+	const sections: ParsedSection[] = [];
 	let wordCount = 0;
 
-	// Track repeated lines across pages (headers/footers)
+	// Detect repeated lines (headers/footers) and median font size
 	const lineFrequency = new Map<string, number>();
+	const fontSizes: number[] = [];
 
 	if (pdf.numPages > 3) {
 		const samplePages = [1, 2, Math.floor(pdf.numPages / 2), pdf.numPages];
@@ -62,13 +64,19 @@ export async function parsePdfFile(
 			const content = await page.getTextContent();
 			const pageLines = extractLines(content);
 			for (const line of pageLines) {
-				const normalized = line.trim().toLowerCase();
+				const normalized = line.text.trim().toLowerCase();
 				if (normalized.length > 0 && normalized.length < 100) {
 					lineFrequency.set(normalized, (lineFrequency.get(normalized) || 0) + 1);
 				}
+				fontSizes.push(line.fontSize);
 			}
 		}
 	}
+
+	// Compute body font size (median) — anything significantly larger is a heading
+	fontSizes.sort((a, b) => a - b);
+	const bodyFontSize = fontSizes.length > 0 ? fontSizes[Math.floor(fontSizes.length / 2)] : 12;
+	const headingThreshold = bodyFontSize * 1.3;
 
 	const repeatedLines = new Set(
 		[...lineFrequency.entries()].filter(([, count]) => count >= 3).map(([line]) => line)
@@ -80,20 +88,27 @@ export async function parsePdfFile(
 		const pageLines = extractLines(content);
 
 		for (const line of pageLines) {
-			const normalized = line.trim().toLowerCase();
+			const text = line.text.trim();
+			const normalized = text.toLowerCase();
 			if (repeatedLines.has(normalized)) continue;
-			if (/^\d{1,4}$/.test(line.trim())) continue;
+			if (/^\d{1,4}$/.test(text)) continue;
 
-			if (line.trim()) {
-				lines.push(line.trim());
-				wordCount += line.trim().split(/\s+/).length;
+			if (text) {
+				// Detect headings by font size
+				if (line.fontSize >= headingThreshold && text.length < 120) {
+					const level = line.fontSize >= bodyFontSize * 1.8 ? 0 : 1;
+					sections.push({ title: text, wordIndex: wordCount, level });
+				}
+
+				lines.push(text);
+				wordCount += text.split(/\s+/).length;
 			}
 		}
 
 		try {
 			await extractPageImages(page, pdfjsLib, media, wordCount, i);
 		} catch {
-			// Skip image extraction for this page
+			// Skip
 		}
 
 		if (i < pdf.numPages) {
@@ -104,7 +119,12 @@ export async function parsePdfFile(
 	}
 
 	const title = file.name.replace(/\.pdf$/i, '');
-	return { title, text: cleanPdfText(lines.join('\n')), media };
+	return {
+		title,
+		text: cleanPdfText(lines.join('\n')),
+		media,
+		sections: sections.length > 0 ? sections : undefined
+	};
 }
 
 /**
@@ -164,9 +184,15 @@ interface TextContentItem {
 	height: number;
 }
 
-function extractLines(content: { items: unknown[] }): string[] {
-	const lines: string[] = [];
+interface ExtractedLine {
+	text: string;
+	fontSize: number;
+}
+
+function extractLines(content: { items: unknown[] }): ExtractedLine[] {
+	const lines: ExtractedLine[] = [];
 	let currentLine = '';
+	let currentFontSize = 12;
 	let lastY: number | null = null;
 	let lastRight = 0;
 
@@ -175,20 +201,26 @@ function extractLines(content: { items: unknown[] }): string[] {
 		const textItem = item as TextContentItem;
 		const y = textItem.transform[5];
 		const x = textItem.transform[4];
+		const fontSize = Math.abs(textItem.transform[0]) || 12;
 
 		if (lastY !== null) {
 			const yDiff = Math.abs(y - lastY);
-			const fontSize = Math.abs(textItem.transform[0]) || 12;
 
 			if (yDiff > fontSize * 0.5) {
 				if (currentLine.trim()) {
-					lines.push(currentLine.trim());
+					lines.push({ text: currentLine.trim(), fontSize: currentFontSize });
 				}
 				currentLine = '';
+				currentFontSize = fontSize;
 			} else if (x > lastRight + fontSize * 2) {
 				currentLine += '  ';
 			}
+		} else {
+			currentFontSize = fontSize;
 		}
+
+		// Track the dominant font size for this line
+		if (fontSize > currentFontSize) currentFontSize = fontSize;
 
 		currentLine += textItem.str;
 		lastY = y;
@@ -196,7 +228,7 @@ function extractLines(content: { items: unknown[] }): string[] {
 	}
 
 	if (currentLine.trim()) {
-		lines.push(currentLine.trim());
+		lines.push({ text: currentLine.trim(), fontSize: currentFontSize });
 	}
 
 	return lines;

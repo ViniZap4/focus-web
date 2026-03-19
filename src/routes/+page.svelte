@@ -37,7 +37,7 @@
 				parseProgress = pct;
 			});
 			reader.fileName = file.name;
-			reader.setText(result.title, result.text, result.media, result.detectedLang);
+			reader.setText(result.title, result.text, result.media, result.detectedLang, result.sections);
 			goto('/reader');
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to parse file';

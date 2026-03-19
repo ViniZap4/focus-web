@@ -1,6 +1,6 @@
-import type { ParseResult } from './text';
+import type { ParseResult, ParsedSection } from './text';
 
-export type { ParseResult };
+export type { ParseResult, ParsedSection };
 export { detectLanguage, filterVoicesByLang, getBestVoice } from './language';
 export type { LanguageResult } from './language';
 

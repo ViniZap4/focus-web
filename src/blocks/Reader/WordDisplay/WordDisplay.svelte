@@ -8,6 +8,7 @@
 
 	const hasMedia = $derived(reader.activeMedia != null);
 	const RENDER_WINDOW = 6;
+	let zoomImage = $state<string | null>(null);
 
 	function getYoutubeId(url: string): string | null {
 		const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?#]+)/);
@@ -81,39 +82,52 @@
 <div class="reader-layout" class:has-media={hasMedia}>
 	{#if hasMedia}
 		{@const item = reader.activeMedia!}
-		<div class="media-panel">
+		<div class="media-panel" class:compact={item.type === 'link'}>
 			<button class="media-dismiss" onclick={() => reader.dismissMedia()} title="Close">
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 					<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
 				</svg>
 			</button>
 
+			<!-- Type badge -->
+			<span class="media-badge">
+				{#if item.type === 'image'}
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+				{:else if item.type === 'table'}
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+				{:else if item.type === 'video'}
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+				{:else}
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+				{/if}
+				<span>{item.type}</span>
+			</span>
+
 			{#if item.type === 'image' && item.src}
-				<div class="media-content">
-					<img src={item.src} alt={item.alt || 'Image'} class="media-img" />
-				</div>
+				<button class="media-frame img-frame" onclick={() => (zoomImage = item.src ?? null)}>
+					<img src={item.src} alt={item.alt || 'Image'} />
+				</button>
 			{/if}
 
 			{#if item.type === 'table' && item.rows}
-				<div class="media-content table-wrap">
+				<div class="media-frame table-frame">
 					{@html renderTable(item)}
 				</div>
 			{/if}
 
 			{#if item.type === 'video' && item.src}
 				{@const ytId = getYoutubeId(item.src)}
-				<div class="media-content">
+				<div class="media-frame video-frame">
 					{#if ytId}
 						<iframe
 							src="https://www.youtube.com/embed/{ytId}"
 							title={item.label || 'Video'}
 							allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
 							allowfullscreen
-							class="media-video"
 						></iframe>
 					{:else}
-						<a href={item.src} target="_blank" rel="noopener noreferrer" class="media-link-card">
-							<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v14.72a1 1 0 001.5.86l11-7.36a1 1 0 000-1.72l-11-7.36A1 1 0 008 5.14z"/></svg>
+						<a href={item.src} target="_blank" rel="noopener noreferrer" class="ext-link">
+							<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" opacity="0.4"><path d="M8 5.14v14.72a1 1 0 001.5.86l11-7.36a1 1 0 000-1.72l-11-7.36A1 1 0 008 5.14z"/></svg>
 							<span>{item.label || 'Open video'}</span>
 						</a>
 					{/if}
@@ -121,14 +135,13 @@
 			{/if}
 
 			{#if item.type === 'link' && item.href}
-				<div class="media-content">
-					<a href={item.href} target="_blank" rel="noopener noreferrer" class="media-link-card">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-						</svg>
-						<span>{item.label || item.href}</span>
-					</a>
-				</div>
+				<a href={item.href} target="_blank" rel="noopener noreferrer" class="media-frame link-frame">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+						<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+					</svg>
+					<span class="link-label">{item.label || item.href}</span>
+					<span class="link-url">{item.href}</span>
+				</a>
 			{/if}
 
 			{#if item.alt}
@@ -188,80 +201,180 @@
 <div class="mask mask-top" class:shifted={hasMedia}></div>
 <div class="mask mask-bottom" class:shifted={hasMedia}></div>
 
+{#if zoomImage}
+	<button class="zoom-overlay" onclick={() => (zoomImage = null)} aria-label="Close zoom">
+		<img src={zoomImage} alt="Full size preview" class="zoom-img" />
+	</button>
+{/if}
+
 <style>
 	.reader-layout { position: fixed; inset: 0; display: flex; transition: all var(--dur-slow) var(--ease); }
 
-	/* ── Side media panel (all types) ──────────────── */
+	/* ── Side media panel ─────────────────────────── */
 	.media-panel {
 		flex: 0 0 42%;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: 2rem 1.5rem;
-		gap: 0.75rem;
+		padding: 3rem 1.5rem 2rem;
+		gap: 0.6rem;
 		position: relative;
 		animation: slideIn 0.5s var(--ease);
 		overflow-y: auto;
 		scrollbar-width: none;
+		background: var(--bg);
+		transition: background-color var(--dur-slow) var(--ease);
 	}
+	.media-panel.compact { flex: 0 0 30%; }
 	.media-panel::-webkit-scrollbar { display: none; }
-	@keyframes slideIn { from { opacity: 0; transform: translateX(-2rem); } }
+	@keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } }
 
 	.media-dismiss {
 		all: unset; cursor: pointer;
-		position: absolute; top: 1rem; right: 1rem;
-		width: 32px; height: 32px;
+		position: absolute; top: 0.8rem; right: 0.8rem;
+		width: 28px; height: 28px;
 		display: flex; align-items: center; justify-content: center;
-		border-radius: 10px;
-		color: var(--text-3);
-		background: var(--surface);
+		border-radius: 8px;
+		color: var(--text-4);
 		transition: all var(--dur) var(--ease);
 		z-index: 5;
 	}
-	.media-dismiss:hover { color: var(--text); background: var(--surface-h); }
+	.media-dismiss:hover { color: var(--text-2); background: var(--surface); }
 	.media-dismiss:active { transform: scale(0.93); }
 
-	.media-content {
-		max-width: 90%;
-		max-height: 65vh;
+	.media-badge {
+		display: flex; align-items: center; gap: 0.3rem;
+		color: var(--text-4);
+		font-size: 0.55rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		padding: 0.2rem 0.5rem;
+		border-radius: 6px;
+		background: var(--surface);
+		margin-bottom: 0.25rem;
+		transition: all var(--dur-slow) var(--ease);
+	}
+
+	/* ── Shared frame ────────────────────────────────── */
+	.media-frame {
+		width: 88%;
 		border-radius: 14px;
 		overflow: hidden;
-		box-shadow: var(--shadow-lg);
 		border: 1px solid var(--border);
+		transition: all var(--dur) var(--ease);
+		animation: frameIn 0.4s var(--ease);
+	}
+	@keyframes frameIn { from { opacity: 0; transform: scale(0.97) translateY(8px); } }
+
+	/* ── Image ────────────────────────────────────────── */
+	.img-frame {
+		all: unset;
+		cursor: zoom-in;
+		display: flex; align-items: center; justify-content: center;
+		width: 88%;
+		max-height: 60vh;
+		border-radius: 14px;
+		overflow: hidden;
+		border: 1px solid var(--border);
+		box-shadow: var(--shadow-lg);
+		background: var(--surface);
+		transition: all var(--dur) var(--ease);
+		animation: frameIn 0.4s var(--ease);
+	}
+	.img-frame:hover { transform: scale(1.01); box-shadow: var(--shadow-lg); }
+	.img-frame:active { transform: scale(0.99); }
+	.img-frame img {
+		display: block;
+		width: 100%;
+		max-height: 60vh;
+		object-fit: contain;
 	}
 
-	.media-img { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; }
-
-	.media-video { width: 100%; aspect-ratio: 16/9; border: none; display: block; }
-
-	.table-wrap {
+	/* ── Table ────────────────────────────────────────── */
+	.table-frame {
 		background: var(--glass);
-		padding: 1rem;
+		padding: 0;
+		max-height: 55vh;
 		overflow: auto;
+		scrollbar-width: thin;
+		box-shadow: var(--shadow-sm);
 	}
-	.table-wrap :global(table) { border-collapse: collapse; width: 100%; }
-	.table-wrap :global(th), .table-wrap :global(td) {
-		padding: 0.5rem 0.8rem; text-align: left;
-		border-bottom: 1px solid var(--border); font-size: 0.75rem;
+	.table-frame :global(table) { border-collapse: collapse; width: 100%; }
+	.table-frame :global(th),
+	.table-frame :global(td) {
+		padding: 0.55rem 0.75rem;
+		text-align: left;
+		border-bottom: 1px solid var(--border);
+		font-size: 0.72rem;
+		white-space: nowrap;
 	}
-	.table-wrap :global(th) { color: var(--text-2); font-weight: 500; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; }
-	.table-wrap :global(td) { color: var(--text-2); }
-	.table-wrap :global(tr:hover td) { background: var(--surface); }
+	.table-frame :global(th) {
+		color: var(--text-3);
+		font-weight: 600;
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		position: sticky;
+		top: 0;
+		background: var(--glass);
+		backdrop-filter: blur(8px);
+	}
+	.table-frame :global(td) { color: var(--text-2); }
+	.table-frame :global(tr:hover td) { background: var(--surface); }
 
-	.media-link-card {
-		display: flex; align-items: center; gap: 0.6rem;
-		padding: 1rem 1.5rem;
+	/* ── Video ────────────────────────────────────────── */
+	.video-frame {
+		box-shadow: var(--shadow-lg);
+		background: #000;
+	}
+	.video-frame iframe {
+		width: 100%;
+		aspect-ratio: 16 / 9;
+		border: none;
+		display: block;
+	}
+	.ext-link {
+		display: flex; flex-direction: column;
+		align-items: center; justify-content: center;
+		gap: 0.5rem;
+		padding: 2.5rem 2rem;
+		background: var(--surface);
+		color: var(--text-3);
+		text-decoration: none;
+		font-size: 0.75rem;
+		transition: all var(--dur) var(--ease);
+	}
+	.ext-link:hover { color: var(--text-2); background: var(--surface-h); }
+
+	/* ── Link ─────────────────────────────────────────── */
+	.link-frame {
+		display: flex; flex-direction: column;
+		gap: 0.4rem;
+		padding: 1.2rem 1.4rem;
 		background: var(--glass);
 		color: var(--text-2);
 		text-decoration: none;
-		font-size: 0.8rem;
+		box-shadow: var(--shadow-sm);
 		transition: all var(--dur) var(--ease);
-		width: 100%;
 	}
-	.media-link-card:hover { background: var(--surface-h); color: var(--text); }
+	.link-frame:hover {
+		background: var(--surface-h);
+		color: var(--text);
+		transform: translateY(-2px);
+		box-shadow: var(--shadow-lg);
+	}
+	.link-label { font-size: 0.8rem; font-weight: 500; }
+	.link-url { font-size: 0.6rem; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-	.media-caption { color: var(--text-3); font-size: 0.65rem; text-align: center; max-width: 90%; }
+	.media-caption {
+		color: var(--text-4);
+		font-size: 0.6rem;
+		text-align: center;
+		max-width: 88%;
+		line-height: 1.4;
+	}
 
 	/* ── Viewport ─────────────────────────────────────── */
 	.vp {
@@ -303,7 +416,28 @@
 
 	.mask { position: fixed; right: 0; height: 28vh; pointer-events: none; z-index: 50; left: 0;
 		transition: left var(--dur-slow) var(--ease), background var(--dur-slow) var(--ease); }
-	.mask.shifted { left: 42%; }
+	.has-media + .mask.shifted, .mask.shifted { left: 42%; }
 	.mask-top { top: 0; background: linear-gradient(to bottom, var(--bg) 10%, var(--bg-t) 100%); }
 	.mask-bottom { bottom: 0; background: linear-gradient(to top, var(--bg) 10%, var(--bg-t) 100%); }
+
+	/* ── Image zoom overlay ───────────────────────────── */
+	.zoom-overlay {
+		all: unset;
+		cursor: zoom-out;
+		position: fixed;
+		inset: 0;
+		z-index: 500;
+		background: rgba(0, 0, 0, 0.85);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		animation: zoomIn 0.3s var(--ease);
+	}
+	@keyframes zoomIn { from { opacity: 0; } }
+	.zoom-img {
+		max-width: 92vw;
+		max-height: 92vh;
+		object-fit: contain;
+		border-radius: 8px;
+	}
 </style>

@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import type { MediaItem } from '$lib/stores/reader.svelte';
-import type { ParseResult } from './text';
+import type { ParseResult, ParsedSection } from './text';
 import { sanitizeNode } from './sanitize';
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200 MB
@@ -101,9 +101,9 @@ export async function parseEpubFile(
 
 	const lines: string[] = [];
 	const media: MediaItem[] = [];
+	const sections: ParsedSection[] = [];
 	let wordCount = 0;
 
-	// Image extraction queue (async, non-blocking)
 	const imagePromises: Promise<void>[] = [];
 
 	for (let idx = 0; idx < spineItems.length; idx++) {
@@ -116,7 +116,6 @@ export async function parseEpubFile(
 		const html = await zip.file(filePath)?.async('string');
 		if (!html) continue;
 
-		// Parse as XHTML, fallback to HTML
 		let doc: Document;
 		try {
 			doc = parser.parseFromString(html, 'application/xhtml+xml');
@@ -128,36 +127,30 @@ export async function parseEpubFile(
 		const body = doc.querySelector('body') || doc.documentElement;
 		if (!body) continue;
 
-		// Sanitize
 		sanitizeNode(body);
 
-		// Get the directory of this content file for resolving relative paths
 		const contentDir = filePath.includes('/')
 			? filePath.substring(0, filePath.lastIndexOf('/') + 1)
 			: opfDir;
 
-		// Process content
 		const result = processNode(body, zip, contentDir, wordCount);
 		lines.push(...result.lines);
 		wordCount = result.wordCount;
+		sections.push(...result.headings);
 
-		// Queue image extraction
 		for (const imgTask of result.imageQueue) {
 			imagePromises.push(
 				extractImage(imgTask.path, imgTask.alt, imgTask.atWord, zip, media)
 			);
 		}
 
-		// Queue table extraction
 		media.push(...result.tables);
-
 		onProgress?.(((idx + 1) / spineItems.length) * 100);
 	}
 
-	// Wait for all images to be extracted
 	await Promise.allSettled(imagePromises);
 
-	return { title, text: lines.join('\n'), media, detectedLang };
+	return { title, text: lines.join('\n'), media, sections: sections.length > 0 ? sections : undefined, detectedLang };
 }
 
 interface ImageTask {
@@ -171,6 +164,7 @@ interface ProcessResult {
 	wordCount: number;
 	imageQueue: ImageTask[];
 	tables: MediaItem[];
+	headings: ParsedSection[];
 }
 
 const BLOCK_TAGS = new Set([
@@ -188,6 +182,7 @@ function processNode(
 	const lines: string[] = [];
 	const imageQueue: ImageTask[] = [];
 	const tables: MediaItem[] = [];
+	const headings: ParsedSection[] = [];
 	let wordCount = startWordCount;
 	let currentParagraph = '';
 
@@ -296,6 +291,20 @@ function processNode(
 		// Skip nav/aside
 		if (tag === 'nav' || tag === 'aside') return;
 
+		// Headings — capture as sections
+		const headingMatch = tag.match(/^h([1-6])$/);
+		if (headingMatch) {
+			flushParagraph();
+			const level = parseInt(headingMatch[1]) - 1; // h1=0, h2=1, etc.
+			const headingText = el.textContent?.trim() || '';
+			if (headingText) {
+				headings.push({ title: headingText, wordIndex: wordCount, level });
+			}
+			for (const child of n.childNodes) walk(child);
+			flushParagraph();
+			return;
+		}
+
 		// Block elements — flush paragraph before and after
 		if (BLOCK_TAGS.has(tag)) {
 			flushParagraph();
@@ -311,7 +320,7 @@ function processNode(
 
 	walk(node);
 	flushParagraph();
-	return { lines, wordCount, imageQueue, tables };
+	return { lines, wordCount, imageQueue, tables, headings };
 }
 
 async function extractImage(
