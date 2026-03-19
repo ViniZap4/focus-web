@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { reader } from '$lib/stores';
 	import type { MediaItem } from '$lib/stores/reader.svelte';
+	import { SettingsPanel } from '../SettingsPanel';
 
 	let viewport: HTMLDivElement | undefined = $state();
 	let cursorEl: HTMLDivElement | undefined = $state();
 	let raf = 0;
 
-	const hasMedia = $derived(reader.activeMedia != null);
+	const hasMedia = $derived(reader.activeMedia != null && reader.settings.mediaDisplay === 'inline');
+	const hasLeftPanel = $derived(hasMedia || reader.showSettings);
 	const RENDER_WINDOW = 6;
 	let zoomImage = $state<string | null>(null);
 
@@ -79,16 +81,17 @@
 	}
 </script>
 
-<div class="reader-layout" class:has-media={hasMedia}>
-	{#if hasMedia}
-		{@const item = reader.activeMedia!}
-		<div class="media-panel" class:compact={item.type === 'link'}>
-			<button class="media-dismiss" onclick={() => reader.dismissMedia()} title="Close">
+<div class="reader-layout" class:has-media={hasLeftPanel}>
+	{#if hasLeftPanel}
+		<div class="media-panel" class:compact={hasMedia && reader.activeMedia?.type === 'link'}>
+			<button class="media-dismiss" onclick={() => { if (hasMedia) reader.dismissMedia(); else reader.showSettings = false; }} title="Close">
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 					<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
 				</svg>
 			</button>
 
+		{#if hasMedia}
+			{@const item = reader.activeMedia!}
 			<!-- Type badge -->
 			<span class="media-badge">
 				{#if item.type === 'image'}
@@ -151,6 +154,12 @@
 			{#if item.label && item.type !== 'link'}
 				<span class="media-caption">{item.label}</span>
 			{/if}
+
+		{:else}
+			<div class="settings-in-panel">
+				<SettingsPanel />
+			</div>
+		{/if}
 		</div>
 	{/if}
 
@@ -373,6 +382,15 @@
 	}
 	.link-label { font-size: 0.8rem; font-weight: 500; }
 	.link-url { font-size: 0.6rem; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+	.settings-in-panel {
+		width: 100%;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		padding: 0 0.2rem;
+	}
+	.settings-in-panel::-webkit-scrollbar { width: 3px; }
+	.settings-in-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 	.media-caption {
 		color: var(--text-4);

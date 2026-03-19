@@ -1,73 +1,21 @@
 <script lang="ts">
-	import { reader, THEMES } from '$lib/stores';
-	import type { ThemeId } from '$lib/stores';
-	import { filterVoicesByLang, detectLanguage } from '$lib/parsers';
-	import { onMount } from 'svelte';
-
-	const showPanel = $derived(reader.showSettings);
+	import { reader } from '$lib/stores';
+	import { detectLanguage, filterVoicesByLang } from '$lib/parsers';
 	let scrubbing = $state(false);
-	let voices: SpeechSynthesisVoice[] = $state([]);
-	let langVoices = $derived(filterVoicesByLang(voices, reader.detectedLang));
 	let progEl = $state<HTMLDivElement>();
-
-	const fonts = [
-		{ l: 'Sans', v: 'Inter' },
-		{ l: 'Serif', v: 'Georgia' },
-		{ l: 'Mono', v: 'monospace' },
-		{ l: 'Sys', v: 'system-ui' }
-	];
-
-	onMount(() => {
-		function load() { voices = window.speechSynthesis.getVoices(); }
-		load();
-		window.speechSynthesis.onvoiceschanged = load;
-	});
-
-	function save() { reader.saveSettings(); }
-
-	// Save + restart speech if currently speaking (for live WPM/pitch/volume updates)
-	function saveLive() {
-		save();
-		if (reader.isSpeaking) reader.restartSpeech();
-	}
-
-	function setTheme(id: ThemeId) {
-		reader.settings.theme = id;
-		save();
-		reader.applyTheme();
-	}
-
-	function changeVoice(name: string) {
-		reader.settings.voice = name;
-		save();
-		if (reader.isSpeaking) reader.restartSpeech();
-	}
 
 	function redetectLang() {
 		if (!reader.text) return;
 		const r = detectLanguage(reader.text);
 		reader.detectedLang = r.code;
 		reader.isRtl = r.isRtl;
+		const voices = window.speechSynthesis.getVoices();
 		const best = voices.length > 0 ? filterVoicesByLang(voices, r.code)[0] : null;
 		if (best) {
 			reader.settings.voice = best.name;
-			save();
+			reader.saveSettings();
 			if (reader.isSpeaking) reader.restartSpeech();
 		}
-	}
-
-	function preview() {
-		window.speechSynthesis.cancel();
-		const u = new SpeechSynthesisUtterance('Focus, word by word.');
-		u.rate = reader.settings.wpm / 180;
-		u.pitch = reader.settings.speechPitch;
-		u.volume = reader.settings.speechVolume;
-		u.lang = reader.detectedLang;
-		if (reader.settings.voice) {
-			const v = voices.find((v) => v.name === reader.settings.voice);
-			if (v) u.voice = v;
-		}
-		window.speechSynthesis.speak(u);
 	}
 
 	// ── Scrubber ──────────────────────────────────────
@@ -151,7 +99,7 @@
 				</svg>
 			</button>
 			<span class="meta">{reader.currentWord + 1}/{reader.totalWords}{reader.etaMinutes > 0 ? ` · ${reader.etaMinutes}m` : ''}</span>
-			<button class="ic" class:active={showPanel} onclick={() => reader.toggleSettings()} title="Settings">
+			<button class="ic" class:active={reader.showSettings} onclick={() => reader.toggleSettings()} title="Settings">
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 					<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/>
 					<circle cx="10" cy="8" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/>
@@ -167,240 +115,6 @@
 
 </div>
 
-{#if showPanel}
-	<button class="settings-backdrop" onclick={() => reader.toggleSettings()} aria-label="Close settings"></button>
-	<div class="settings-side">
-		<div class="settings-head">
-			<span>Settings</span>
-			<button class="settings-close" onclick={() => reader.toggleSettings()} aria-label="Close">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-			</button>
-		</div>
-		<div class="settings-body">
-			<!-- Theme -->
-			<div class="p-section">
-				<div class="p-grid themes">
-					{#each THEMES as t}
-						<button class="theme-card" class:on={reader.settings.theme === t.id} onclick={() => setTheme(t.id)}>
-							<span class="tc-swatch" style="background:{t.preview}"></span>
-							<span class="tc-name">{t.label}</span>
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Font + Align -->
-			<div class="p-section">
-				<div class="p-grid-2">
-					<div>
-						<span class="p-label">Font</span>
-						<div class="chips">
-							{#each fonts as f}
-								<button class="chip" class:on={reader.settings.fontFamily === f.v} style="font-family:{f.v}" onclick={() => { reader.settings.fontFamily = f.v; save(); }}>{f.l}</button>
-							{/each}
-						</div>
-					</div>
-					<div>
-						<span class="p-label">Align</span>
-						<div class="chips">
-							<button class="chip" class:on={reader.settings.textAlign === 'center'} onclick={() => { reader.settings.textAlign = 'center'; save(); }}>Center</button>
-							<button class="chip" class:on={reader.settings.textAlign === 'left'} onclick={() => { reader.settings.textAlign = 'left'; save(); }}>Left</button>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<!-- Size + Height + Width + Gap -->
-			<div class="p-section">
-				<div class="p-grid-2">
-					<div class="sl-group">
-						<div class="sl-head"><span class="sl-label">Size</span><span class="sl-val">{reader.settings.fontSize}px</span></div>
-						<input type="range" min="20" max="64" step="2" bind:value={reader.settings.fontSize} oninput={save} />
-					</div>
-					<div class="sl-group">
-						<div class="sl-head"><span class="sl-label">Line height</span><span class="sl-val">{reader.settings.lineHeight.toFixed(1)}</span></div>
-						<input type="range" min="1.4" max="4" step="0.2" bind:value={reader.settings.lineHeight} oninput={save} />
-					</div>
-				</div>
-				<div class="p-grid-2">
-					<div class="sl-group">
-						<div class="sl-head"><span class="sl-label">Line width</span><span class="sl-val">{reader.settings.maxLineWidth}%</span></div>
-						<input type="range" min="40" max="100" step="5" bind:value={reader.settings.maxLineWidth} oninput={save} />
-					</div>
-					<div class="sl-group">
-						<div class="sl-head"><span class="sl-label">Word gap</span><span class="sl-val">{reader.settings.wordGap.toFixed(2)}</span></div>
-						<input type="range" min="0" max="1" step="0.05" bind:value={reader.settings.wordGap} oninput={save} />
-					</div>
-				</div>
-			</div>
-
-			<!-- Speed + Pitch + Volume (live update during speech) -->
-			<div class="p-section">
-				<div class="p-grid-2">
-					<div class="sl-group">
-						<div class="sl-head"><span class="sl-label">Speed</span><span class="sl-val">{reader.settings.wpm} wpm</span></div>
-						<input type="range" min="60" max="600" step="10" bind:value={reader.settings.wpm} oninput={saveLive} />
-					</div>
-					<div class="sl-group">
-						<div class="sl-head"><span class="sl-label">Pitch</span><span class="sl-val">{reader.settings.speechPitch.toFixed(1)}</span></div>
-						<input type="range" min="0.5" max="2" step="0.1" bind:value={reader.settings.speechPitch} oninput={saveLive} />
-					</div>
-				</div>
-				<div class="sl-group">
-					<div class="sl-head">
-						<span class="sl-label">Volume</span>
-						<span class="sl-val">{Math.round(reader.settings.speechVolume * 100)}%</span>
-					</div>
-					<input type="range" min="0" max="1" step="0.05" bind:value={reader.settings.speechVolume} oninput={saveLive} />
-				</div>
-			</div>
-
-			<!-- Voice -->
-			<div class="p-section">
-				<span class="p-label">Voice ({reader.detectedLang})</span>
-				<div class="voice-row">
-					<select value={reader.settings.voice} onchange={(e) => changeVoice((e.target as HTMLSelectElement).value)}>
-						<option value="">Auto</option>
-						{#each langVoices as v}
-							<option value={v.name}>{v.name}</option>
-						{/each}
-						{#if voices.length > langVoices.length}
-							<optgroup label="Other languages">
-								{#each voices.filter(v => !langVoices.includes(v)) as v}
-									<option value={v.name}>{v.name} ({v.lang})</option>
-								{/each}
-							</optgroup>
-						{/if}
-					</select>
-					<button class="voice-preview" onclick={preview} title="Preview voice">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
-					</button>
-				</div>
-			</div>
-
-			<!-- Toggles -->
-			<div class="p-section">
-				<label class="toggle-row">
-					<span>Bionic reading</span>
-					<button class="tog" class:on={reader.settings.bionicReading} aria-label="Bionic reading"
-						onclick={() => { reader.settings.bionicReading = !reader.settings.bionicReading; save(); }}>
-						<span class="td"></span>
-					</button>
-				</label>
-				{#if reader.settings.bionicReading}
-					<div class="sl-group">
-						<div class="sl-head"><span class="sl-label">Fixation</span><span class="sl-val">{Math.round(reader.settings.bionicStrength * 100)}%</span></div>
-						<input type="range" min="0.3" max="0.8" step="0.05" bind:value={reader.settings.bionicStrength} oninput={save} />
-					</div>
-				{/if}
-				<div class="sl-group">
-					<div class="sl-head"><span class="sl-label">Sentence pause</span><span class="sl-val">{reader.settings.sentencePause.toFixed(1)}s</span></div>
-					<input type="range" min="0" max="2" step="0.1" bind:value={reader.settings.sentencePause} oninput={save} />
-				</div>
-			</div>
-
-			<!-- Reading mode -->
-			<div class="p-section">
-				<span class="p-label">Reading mode</span>
-				<div class="mode-grid">
-					<button class="mode-card" class:on={reader.settings.readingMode === 'scroll'} onclick={() => { reader.settings.readingMode = 'scroll'; save(); }}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="3" y1="18" x2="15" y2="18"/></svg>
-						<span>Scroll</span>
-						<span class="mode-desc">Word-by-word focus</span>
-					</button>
-					<button class="mode-card" class:on={reader.settings.readingMode === 'rsvp'} onclick={() => { reader.settings.readingMode = 'rsvp'; save(); }}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="8" width="18" height="8" rx="2"/><line x1="12" y1="4" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="20"/></svg>
-						<span>RSVP</span>
-						<span class="mode-desc">One word at a time</span>
-					</button>
-					<button class="mode-card" class:on={reader.settings.readingMode === 'paragraph'} onclick={() => { reader.settings.readingMode = 'paragraph'; save(); }}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg>
-						<span>Paragraph</span>
-						<span class="mode-desc">Section by section</span>
-					</button>
-					<button class="mode-card" class:on={reader.settings.readingMode === 'highlight'} onclick={() => { reader.settings.readingMode = 'highlight'; save(); }}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-						<span>Highlight</span>
-						<span class="mode-desc">Full text, line highlight</span>
-					</button>
-				</div>
-				{#if reader.settings.speedRamp}
-					<div class="sl-group">
-						<div class="sl-head"><span class="sl-label">Ramp to</span><span class="sl-val">{reader.settings.speedRampMax} wpm</span></div>
-						<input type="range" min="200" max="600" step="20" bind:value={reader.settings.speedRampMax} oninput={save} />
-					</div>
-				{/if}
-			</div>
-
-		<!-- Media display -->
-			<div class="p-section">
-				<span class="p-label">Media display</span>
-				<div class="chips">
-					<button class="chip" class:on={reader.settings.mediaDisplay === 'inline'} onclick={() => { reader.settings.mediaDisplay = 'inline'; save(); }}>Side panel</button>
-					<button class="chip" class:on={reader.settings.mediaDisplay === 'modal'} onclick={() => { reader.settings.mediaDisplay = 'modal'; save(); }}>Center modal</button>
-				</div>
-			</div>
-
-			<div class="p-section no-border">
-				<label class="toggle-row">
-					<span>Zen mode</span>
-					<button class="tog" class:on={reader.settings.zenMode} aria-label="Zen mode"
-						onclick={() => { reader.settings.zenMode = !reader.settings.zenMode; save(); }}>
-						<span class="td"></span>
-					</button>
-				</label>
-				<label class="toggle-row">
-					<span>Speed ramp</span>
-					<button class="tog" class:on={reader.settings.speedRamp} aria-label="Speed ramp"
-						onclick={() => { reader.settings.speedRamp = !reader.settings.speedRamp; save(); }}>
-						<span class="td"></span>
-					</button>
-				</label>
-				<label class="toggle-row">
-					<span>Dyslexia font</span>
-					<button class="tog" class:on={reader.settings.dyslexiaFont} aria-label="Dyslexia font"
-						onclick={() => { reader.settings.dyslexiaFont = !reader.settings.dyslexiaFont; save(); }}>
-						<span class="td"></span>
-					</button>
-				</label>
-				<label class="toggle-row">
-					<span>Pause on interact</span>
-					<button class="tog" class:on={reader.settings.pauseOnMedia} aria-label="Pause on interact"
-						onclick={() => { reader.settings.pauseOnMedia = !reader.settings.pauseOnMedia; save(); }}>
-						<span class="td"></span>
-					</button>
-				</label>
-				<label class="toggle-row">
-					<span>Smooth scroll</span>
-					<button class="tog" class:on={reader.settings.smoothScroll} aria-label="Smooth scroll"
-						onclick={() => { reader.settings.smoothScroll = !reader.settings.smoothScroll; save(); }}>
-						<span class="td"></span>
-					</button>
-				</label>
-				<label class="toggle-row">
-					<span>Auto-detect language</span>
-					<button class="tog" class:on={reader.settings.autoDetectLang} aria-label="Auto language"
-						onclick={() => { reader.settings.autoDetectLang = !reader.settings.autoDetectLang; save(); }}>
-						<span class="td"></span>
-					</button>
-				</label>
-			</div>
-
-			<div class="keys">
-				<span><kbd>→</kbd><kbd>j</kbd><kbd>spc</kbd> next</span>
-				<span><kbd>←</kbd><kbd>k</kbd> prev</span>
-				<span><kbd>↓↑</kbd> line</span>
-				<span><kbd>p</kbd> play</span>
-				<span><kbd>s</kbd> speak</span>
-				<span><kbd>+</kbd><kbd>-</kbd> speed</span>
-				<span><kbd>b</kbd> bionic</span>
-				<span><kbd>f</kbd> zen</span>
-				<span><kbd>m</kbd> bookmark</span>
-				<span><kbd>⌘F</kbd> search</span>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <style>
 	.bar {
@@ -528,7 +242,7 @@
 		padding: 0 0.15rem;
 	}
 
-	/* ── Settings side panel ──────────────────────── */
+	/* (Settings content moved to SettingsPanel component in WordDisplay left panel) */
 	.settings-backdrop {
 		all: unset;
 		position: fixed;
