@@ -118,6 +118,7 @@
 >
 	<header class="stagger" style="transition-delay:0ms">
 		<h1>Focus</h1>
+		<p class="tagline">Read with intention, one word at a time</p>
 	</header>
 
 	<div class="input-bar stagger" style="transition-delay:100ms">
@@ -259,6 +260,14 @@
 		color: var(--text);
 		margin: 0;
 		font-family: Georgia, 'Times New Roman', serif;
+		transition: color var(--dur-slow) var(--ease);
+	}
+
+	.tagline {
+		color: var(--text-4);
+		font-size: 0.75rem;
+		margin: -0.5rem 0 0;
+		letter-spacing: 0.02em;
 		transition: color var(--dur-slow) var(--ease);
 	}
 

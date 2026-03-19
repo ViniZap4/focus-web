@@ -179,14 +179,15 @@ export interface Section {
 	level: number;
 }
 
-export type ThemeId = 'auto' | 'light' | 'dark' | 'sepia' | 'midnight';
+export type ThemeId = 'auto' | 'light' | 'dark' | 'sepia' | 'midnight' | 'oled';
 
 export const THEMES: { id: ThemeId; label: string; preview: string }[] = [
 	{ id: 'auto', label: 'Auto', preview: 'linear-gradient(160deg, #e8e8e8 40%, #3a3a3a 60%)' },
 	{ id: 'light', label: 'Light', preview: '#f5f5f5' },
 	{ id: 'dark', label: 'Dark', preview: '#222222' },
 	{ id: 'sepia', label: 'Sepia', preview: '#ece5d5' },
-	{ id: 'midnight', label: 'Night', preview: '#14142a' }
+	{ id: 'midnight', label: 'Night', preview: '#14142a' },
+	{ id: 'oled', label: 'OLED', preview: '#000000' }
 ];
 
 export interface ReaderSettings {
