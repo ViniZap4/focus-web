@@ -21,23 +21,23 @@
 	.code {
 		font-size: 4rem;
 		font-weight: 100;
-		color: rgba(255, 255, 255, 0.08);
+		color: var(--text-5);
 	}
 
 	.msg {
-		color: rgba(255, 255, 255, 0.25);
+		color: var(--text-3);
 		font-size: 0.85rem;
 	}
 
 	a {
-		color: rgba(255, 255, 255, 0.2);
+		color: var(--text-4);
 		font-size: 0.75rem;
 		text-decoration: none;
 		margin-top: 1rem;
-		transition: color 0.2s;
+		transition: color var(--dur) var(--ease);
 	}
 
 	a:hover {
-		color: rgba(255, 255, 255, 0.6);
+		color: var(--text-2);
 	}
 </style>

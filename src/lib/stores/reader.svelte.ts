@@ -90,7 +90,24 @@ export interface MediaItem {
 	triggerAtWord: number;
 }
 
+export interface Section {
+	title: string;
+	wordIndex: number;
+	level: number;
+}
+
+export type ThemeId = 'auto' | 'light' | 'dark' | 'sepia' | 'midnight';
+
+export const THEMES: { id: ThemeId; label: string; preview: string }[] = [
+	{ id: 'auto', label: 'Auto', preview: 'linear-gradient(160deg, #e8e8e8 40%, #3a3a3a 60%)' },
+	{ id: 'light', label: 'Light', preview: '#f5f5f5' },
+	{ id: 'dark', label: 'Dark', preview: '#222222' },
+	{ id: 'sepia', label: 'Sepia', preview: '#ece5d5' },
+	{ id: 'midnight', label: 'Night', preview: '#14142a' }
+];
+
 export interface ReaderSettings {
+	theme: ThemeId;
 	fontFamily: string;
 	fontSize: number;
 	letterSpacing: number;
@@ -103,6 +120,7 @@ export interface ReaderSettings {
 }
 
 const DEFAULT_SETTINGS: ReaderSettings = {
+	theme: 'auto',
 	fontFamily: 'Inter',
 	fontSize: 42,
 	letterSpacing: 0.5,
@@ -147,6 +165,7 @@ class ReaderState {
 	isSpeaking = $state(false);
 	isPaused = $state(false);
 	showSettings = $state(false);
+	showSections = $state(false);
 	settings = $state<ReaderSettings>(loadSettings());
 	media = $state<MediaItem[]>([]);
 	activeMedia = $state<MediaItem | null>(null);
@@ -194,6 +213,59 @@ class ReaderState {
 	});
 	mediaCount = $derived(this.media.length);
 
+	// How many words to highlight as "active" — wider during playback,
+	// but never crosses a line boundary
+	focusCount = $derived.by(() => {
+		if (!this.isPlaying) return 1;
+		const wanted = Math.max(2, Math.min(4, Math.ceil(this.settings.wpm / 180)));
+		// Find how many words remain on the current line from currentWord
+		const line = this.lines[this.currentLineIndex];
+		if (!line) return 1;
+		const posInLine = this.currentWord - line.words[0].globalIndex;
+		const remaining = line.words.length - posInLine;
+		return Math.min(wanted, remaining);
+	});
+
+	sections = $derived.by((): Section[] => {
+		const rawLines = this.text.split('\n');
+		const sections: Section[] = [];
+		let gi = 0;
+		let prevWasEmpty = true;
+
+		for (const line of rawLines) {
+			const trimmed = line.trim();
+			if (trimmed.length === 0) {
+				prevWasEmpty = true;
+				continue;
+			}
+
+			const words = trimmed.split(/\s+/).filter((w) => w.length > 0);
+
+			if (prevWasEmpty && words.length > 0) {
+				const preview = words.slice(0, 8).join(' ');
+				sections.push({
+					title: preview + (words.length > 8 ? '...' : ''),
+					wordIndex: gi,
+					level: 0
+				});
+			}
+
+			gi += words.length;
+			prevWasEmpty = false;
+		}
+
+		return sections;
+	});
+
+	currentSectionIndex = $derived.by(() => {
+		let idx = 0;
+		for (let i = 0; i < this.sections.length; i++) {
+			if (this.sections[i].wordIndex <= this.currentWord) idx = i;
+			else break;
+		}
+		return idx;
+	});
+
 	// ── Load ──────────────────────────────────────────────────────────────
 
 	setText(title: string, text: string, media: MediaItem[] = [], lang?: string) {
@@ -204,6 +276,8 @@ class ReaderState {
 		this.currentWord = 0;
 		this.activeMedia = null;
 
+		const prevLang = this.detectedLang;
+
 		if (lang) {
 			this.detectedLang = lang;
 			this.isRtl = false;
@@ -213,9 +287,11 @@ class ReaderState {
 			this.isRtl = r.isRtl;
 		}
 
-		if (this.settings.autoDetectLang && typeof window !== 'undefined') {
+		// Always pick the best voice for the detected language when it changes
+		if (typeof window !== 'undefined') {
+			const langChanged = this.detectedLang !== prevLang;
 			const voices = window.speechSynthesis.getVoices();
-			if (voices.length > 0 && !this.settings.voice) {
+			if (voices.length > 0 && (langChanged || !this.settings.voice)) {
 				const best = getBestVoice(voices, this.detectedLang);
 				if (best) this.settings.voice = best.name;
 			}
@@ -392,12 +468,8 @@ class ReaderState {
 
 			const target = baseWord + bestIdx;
 
-			// Forward-only: never go backwards, max 4 word jump
-			if (
-				target >= this.currentWord &&
-				target <= this.currentWord + 4 &&
-				target < this.totalWords
-			) {
+			// Forward-only: never go backwards
+			if (target >= this.currentWord && target < this.totalWords) {
 				this.currentWord = target;
 				this.checkMedia();
 			}
@@ -502,8 +574,19 @@ class ReaderState {
 		localStorage.setItem('focus-settings', JSON.stringify(this.settings));
 	}
 
+	applyTheme() {
+		if (typeof document === 'undefined') return;
+		document.documentElement.setAttribute('data-theme', this.settings.theme);
+	}
+
 	toggleSettings() {
 		this.showSettings = !this.showSettings;
+		if (this.showSettings) this.showSections = false;
+	}
+
+	toggleSections() {
+		this.showSections = !this.showSections;
+		if (this.showSections) this.showSettings = false;
 	}
 
 	reset() {

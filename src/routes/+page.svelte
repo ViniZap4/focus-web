@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { reader, sampleTexts } from '$lib/stores';
+	import { reader, sampleTexts, THEMES } from '$lib/stores';
+	import type { ThemeId } from '$lib/stores';
 	import { parseFile, SUPPORTED_EXTENSIONS } from '$lib/parsers';
 	import { onMount } from 'svelte';
 
@@ -9,20 +10,21 @@
 	let parsing = $state(false);
 	let parseProgress = $state(0);
 	let error = $state('');
-	let mounted = $state(false);
+	let textEl = $state<HTMLTextAreaElement>();
+	let ready = $state(false);
 
 	onMount(() => {
-		mounted = true;
+		requestAnimationFrame(() => { ready = true; });
 	});
-
-	function select(sample: (typeof sampleTexts)[number]) {
-		reader.setText(sample.title, sample.content, [], sample.lang);
-		goto('/reader');
-	}
 
 	function start() {
 		if (!customText.trim()) return;
 		reader.setText('Untitled', customText);
+		goto('/reader');
+	}
+
+	function select(sample: (typeof sampleTexts)[number]) {
+		reader.setText(sample.title, sample.content, [], sample.lang);
 		goto('/reader');
 	}
 
@@ -45,11 +47,15 @@
 		}
 	}
 
-	function onFileInput(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (file) handleFile(file);
-		input.value = '';
+	function triggerUpload() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = SUPPORTED_EXTENSIONS.join(',');
+		input.onchange = (e) => {
+			const file = (e.target as HTMLInputElement).files?.[0];
+			if (file) handleFile(file);
+		};
+		input.click();
 	}
 
 	function onDrop(e: DragEvent) {
@@ -64,102 +70,89 @@
 		dragOver = true;
 	}
 
-	function triggerUpload(accept: string) {
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = accept;
-		input.onchange = (e) => onFileInput(e);
-		input.click();
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			start();
+		}
+	}
+
+	function autoResize() {
+		if (!textEl) return;
+		textEl.style.height = '36px';
+		textEl.style.height = Math.min(textEl.scrollHeight, 180) + 'px';
+	}
+
+	function setTheme(id: ThemeId) {
+		reader.settings.theme = id;
+		reader.saveSettings();
+		reader.applyTheme();
 	}
 </script>
 
-<div class="home" class:mounted>
-	<!-- Title -->
-	<header class="fade-in" style="animation-delay: 0ms">
+<div
+	class="home"
+	class:ready
+	class:drag-over={dragOver}
+	role="region"
+	aria-label="File drop zone"
+	ondrop={onDrop}
+	ondragover={onDragOver}
+	ondragleave={() => (dragOver = false)}
+>
+	<header class="stagger" style="transition-delay:0ms">
 		<h1>Focus</h1>
 	</header>
 
-	<!-- Input area -->
-	<div
-		class="input-area fade-in"
-		style="animation-delay: 80ms"
-		class:drag-over={dragOver}
-		role="region"
-		ondrop={onDrop}
-		ondragover={onDragOver}
-		ondragleave={() => (dragOver = false)}
-	>
-		<textarea
-			placeholder="paste text here or drop a file..."
-			bind:value={customText}
-			rows="4"
-		></textarea>
+	<div class="input-bar stagger" style="transition-delay:100ms">
+		<button class="upload-btn" onclick={triggerUpload} disabled={parsing} title="Upload file">
+			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+				<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+				<polyline points="17 8 12 3 7 8" />
+				<line x1="12" y1="3" x2="12" y2="15" />
+			</svg>
+			<span>Upload</span>
+		</button>
 
-		<div class="input-actions">
-			<div class="upload-btns">
-				<button
-					class="upload-btn"
-					title="Upload PDF"
-					onclick={() => triggerUpload('.pdf')}
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-						<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-						<polyline points="14 2 14 8 20 8" />
-						<line x1="9" y1="15" x2="15" y2="15" />
-					</svg>
-					<span>pdf</span>
-				</button>
-
-				<button
-					class="upload-btn"
-					title="Upload EPUB"
-					onclick={() => triggerUpload('.epub')}
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-						<path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-						<path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-					</svg>
-					<span>epub</span>
-				</button>
-
-				<button
-					class="upload-btn"
-					title="Upload text file"
-					onclick={() => triggerUpload('.txt,.md,.html')}
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-						<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-						<polyline points="14 2 14 8 20 8" />
-						<line x1="16" y1="13" x2="8" y2="13" />
-						<line x1="16" y1="17" x2="8" y2="17" />
-					</svg>
-					<span>txt</span>
-				</button>
-			</div>
-
-			<button class="go-btn" onclick={start} disabled={!customText.trim() || parsing}>
-				{parsing ? '...' : '→'}
-			</button>
+		<div class="input-wrap">
+			<textarea
+				bind:this={textEl}
+				placeholder="Paste text here..."
+				bind:value={customText}
+				oninput={autoResize}
+				onkeydown={onKeydown}
+				rows="1"
+			></textarea>
 		</div>
+
+		<button
+			class="go-btn"
+			onclick={start}
+			disabled={!customText.trim() || parsing}
+			title="Start reading"
+		>
+			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+			</svg>
+		</button>
 	</div>
 
 	{#if error}
-		<p class="error-msg fade-in">{error}</p>
+		<p class="error-msg">{error}</p>
 	{/if}
 
 	{#if parsing}
-		<div class="parsing fade-in">
+		<div class="parsing">
 			<div class="spinner"></div>
-			<span>parsing... {parseProgress > 0 ? `${Math.round(parseProgress)}%` : ''}</span>
+			<span>Parsing{parseProgress > 0 ? ` ${Math.round(parseProgress)}%` : '...'}</span>
 		</div>
 	{/if}
 
-	<!-- Samples -->
-	<div class="samples fade-in" style="animation-delay: 160ms">
+	<div class="samples stagger" style="transition-delay:180ms">
 		{#each sampleTexts as sample, i}
 			<button
-				class="sample fade-in"
-				style="animation-delay: {200 + i * 60}ms"
+				class="sample stagger"
+				style="transition-delay:{220 + i * 50}ms"
 				onclick={() => select(sample)}
 			>
 				<span class="sample-lang">{sample.lang}</span>
@@ -168,10 +161,21 @@
 		{/each}
 	</div>
 
-	<!-- Footer hint -->
-	<footer class="fade-in" style="animation-delay: 400ms">
-		{SUPPORTED_EXTENSIONS.join('  ')}
-	</footer>
+	<div class="home-bar stagger" style="transition-delay:400ms">
+		<div class="theme-row">
+			{#each THEMES as t}
+				<button
+					class="theme-btn"
+					class:on={reader.settings.theme === t.id}
+					onclick={() => setTheme(t.id)}
+					title={t.label}
+				>
+					<span class="theme-swatch" style="background:{t.preview}"></span>
+					<span class="theme-label">{t.label}</span>
+				</button>
+			{/each}
+		</div>
+	</div>
 </div>
 
 <style>
@@ -182,79 +186,60 @@
 		align-items: center;
 		justify-content: center;
 		padding: 2rem 1.5rem;
-		gap: 2rem;
-		max-width: 520px;
-		margin: 0 auto;
+		gap: 1.5rem;
+		width: 100%;
+		transition: background var(--dur-slow) var(--ease);
 	}
 
-	.fade-in {
+	.home.drag-over {
+		background: var(--surface);
+	}
+
+	/* ── Stagger entry ─────────────────────────────── */
+	.stagger {
 		opacity: 0;
-		transform: translateY(12px);
-		animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+		transform: translateY(18px) scale(0.98);
+		transition:
+			opacity 0.7s var(--ease),
+			transform 0.7s var(--ease);
 	}
 
-	@keyframes fadeUp {
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
+	.ready .stagger {
+		opacity: 1;
+		transform: translateY(0) scale(1);
 	}
 
+	/* ── Title ──────────────────────────────────────── */
 	header h1 {
-		font-size: 3rem;
-		font-weight: 100;
-		letter-spacing: -0.04em;
-		color: rgba(255, 255, 255, 0.85);
+		font-size: clamp(3.5rem, 10vw, 6rem);
+		font-weight: 400;
+		letter-spacing: -0.03em;
+		color: var(--text);
 		margin: 0;
+		font-family: Georgia, 'Times New Roman', serif;
+		transition: color var(--dur-slow) var(--ease);
 	}
 
-	.input-area {
-		width: 100%;
+	/* ── Input bar ─────────────────────────────────── */
+	.input-bar {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.3rem;
+		padding: 0.35rem;
 		border-radius: 16px;
-		border: 1px solid rgba(255, 255, 255, 0.04);
-		background: rgba(255, 255, 255, 0.015);
-		overflow: hidden;
-		transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	.input-area:focus-within {
-		border-color: rgba(255, 255, 255, 0.08);
-		background: rgba(255, 255, 255, 0.025);
-	}
-
-	.input-area.drag-over {
-		border-color: rgba(255, 255, 255, 0.2);
-		background: rgba(255, 255, 255, 0.04);
-		transform: scale(1.01);
-	}
-
-	textarea {
-		all: unset;
-		display: block;
+		border: 1px solid var(--border);
+		background: var(--surface);
 		width: 100%;
-		padding: 1.2rem 1.2rem 0.8rem;
-		font-size: 0.9rem;
-		line-height: 1.7;
-		color: rgba(255, 255, 255, 0.7);
-		resize: none;
-		box-sizing: border-box;
+		max-width: 520px;
+		transition:
+			border-color var(--dur) var(--ease),
+			background-color var(--dur-slow) var(--ease),
+			box-shadow var(--dur) var(--ease);
 	}
 
-	textarea::placeholder {
-		color: rgba(255, 255, 255, 0.12);
-	}
-
-	.input-actions {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0.6rem 0.8rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.02);
-	}
-
-	.upload-btns {
-		display: flex;
-		gap: 0.25rem;
+	.input-bar:focus-within {
+		border-color: var(--border-h);
+		box-shadow: var(--shadow-sm);
 	}
 
 	.upload-btn {
@@ -262,47 +247,186 @@
 		cursor: pointer;
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
-		padding: 0.35rem 0.65rem;
-		border-radius: 8px;
-		color: rgba(255, 255, 255, 0.2);
-		font-size: 0.7rem;
-		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+		gap: 0.35rem;
+		padding: 0.5rem 0.7rem;
+		border-radius: 12px;
+		background: var(--surface-h);
+		color: var(--text-2);
+		font-size: 0.75rem;
+		font-weight: 500;
+		white-space: nowrap;
+		flex-shrink: 0;
+		transition: all var(--dur) var(--ease);
 	}
 
-	.upload-btn:hover {
-		color: rgba(255, 255, 255, 0.6);
-		background: rgba(255, 255, 255, 0.04);
+	.upload-btn:hover:not(:disabled) {
+		background: var(--surface-a);
+		color: var(--text);
+		transform: scale(1.03);
+	}
+
+	.upload-btn:active:not(:disabled) { transform: scale(0.96); }
+	.upload-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+	.input-wrap {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.input-wrap textarea {
+		all: unset;
+		display: block;
+		width: 100%;
+		padding: 0.5rem 0.6rem;
+		font-size: 0.85rem;
+		color: var(--text);
+		line-height: 1.5;
+		resize: none;
+		overflow: hidden;
+		height: 36px;
+		max-height: 180px;
+		box-sizing: border-box;
+		transition: color var(--dur-slow) var(--ease);
+	}
+
+	.input-wrap textarea::placeholder {
+		color: var(--text-4);
+		transition: color var(--dur-slow) var(--ease);
 	}
 
 	.go-btn {
 		all: unset;
 		cursor: pointer;
-		width: 36px;
-		height: 36px;
+		width: 34px;
+		height: 34px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		border-radius: 10px;
-		background: rgba(255, 255, 255, 0.06);
-		color: rgba(255, 255, 255, 0.5);
-		font-size: 1.1rem;
-		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+		background: var(--surface-h);
+		color: var(--text-2);
+		flex-shrink: 0;
+		transition: all var(--dur) var(--ease);
 	}
 
 	.go-btn:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.12);
-		color: white;
-		transform: scale(1.05);
+		background: var(--surface-a);
+		color: var(--text);
+		transform: scale(1.06);
 	}
 
-	.go-btn:disabled {
-		opacity: 0.15;
-		cursor: not-allowed;
+	.go-btn:active:not(:disabled) { transform: scale(0.93); }
+	.go-btn:disabled { opacity: 0.12; cursor: not-allowed; }
+
+	/* ── Samples ───────────────────────────────────── */
+	.samples {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		justify-content: center;
+		max-width: 520px;
 	}
 
+	.sample {
+		all: unset;
+		cursor: pointer;
+		padding: 0.4rem 0.9rem;
+		border-radius: 20px;
+		border: 1px solid var(--border);
+		color: var(--text-3);
+		font-size: 0.75rem;
+		transition: all var(--dur) var(--ease);
+	}
+
+	.sample:hover {
+		color: var(--text-2);
+		border-color: var(--border-h);
+		background: var(--surface);
+		transform: translateY(-2px);
+	}
+
+	.sample:active { transform: translateY(0) scale(0.96); }
+
+	.sample-lang {
+		font-size: 0.5rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-4);
+		background: var(--surface);
+		padding: 0.1rem 0.3rem;
+		border-radius: 4px;
+		margin-right: 0.25rem;
+		transition: all var(--dur-slow) var(--ease);
+	}
+
+	/* ── Theme bar ─────────────────────────────────── */
+	.home-bar {
+		display: flex;
+		align-items: center;
+		padding: 0.3rem 0.35rem;
+		border-radius: 14px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		transition:
+			background-color var(--dur-slow) var(--ease),
+			border-color var(--dur-slow) var(--ease);
+	}
+
+	.theme-row {
+		display: flex;
+		gap: 0.2rem;
+		align-items: center;
+	}
+
+	.theme-btn {
+		all: unset;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.25rem 0.45rem 0.25rem 0.25rem;
+		border-radius: 9px;
+		border: 1.5px solid transparent;
+		transition: all var(--dur) var(--ease);
+	}
+
+	.theme-btn:hover {
+		background: var(--surface-h);
+	}
+
+	.theme-btn:active { transform: scale(0.95); }
+
+	.theme-btn.on {
+		border-color: var(--text-3);
+		background: var(--surface-h);
+	}
+
+	.theme-swatch {
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		border: 1.5px solid var(--border-h);
+		flex-shrink: 0;
+		transition: border-color var(--dur-slow) var(--ease);
+	}
+
+	.theme-btn.on .theme-swatch {
+		border-color: var(--text-3);
+	}
+
+	.theme-label {
+		font-size: 0.58rem;
+		color: var(--text-4);
+		font-weight: 500;
+		transition: color var(--dur-slow) var(--ease);
+	}
+
+	.theme-btn.on .theme-label { color: var(--text-2); }
+
+	/* ── Feedback ──────────────────────────────────── */
 	.error-msg {
-		color: rgba(255, 120, 120, 0.7);
+		color: var(--error);
 		font-size: 0.75rem;
 		margin: 0;
 	}
@@ -311,66 +435,20 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		color: rgba(255, 255, 255, 0.3);
+		color: var(--text-3);
 		font-size: 0.75rem;
 	}
 
 	.spinner {
 		width: 14px;
 		height: 14px;
-		border: 1.5px solid rgba(255, 255, 255, 0.1);
-		border-top-color: rgba(255, 255, 255, 0.4);
+		border: 1.5px solid var(--border);
+		border-top-color: var(--text-3);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
 
 	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	.samples {
-		display: flex;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-		justify-content: center;
-	}
-
-	.sample {
-		all: unset;
-		cursor: pointer;
-		padding: 0.45rem 1rem;
-		border-radius: 20px;
-		border: 1px solid rgba(255, 255, 255, 0.04);
-		color: rgba(255, 255, 255, 0.25);
-		font-size: 0.78rem;
-		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	.sample:hover {
-		color: rgba(255, 255, 255, 0.7);
-		border-color: rgba(255, 255, 255, 0.1);
-		background: rgba(255, 255, 255, 0.03);
-		transform: translateY(-1px);
-	}
-
-	.sample-lang {
-		font-size: 0.55rem;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: rgba(255, 255, 255, 0.15);
-		background: rgba(255, 255, 255, 0.03);
-		padding: 0.1rem 0.3rem;
-		border-radius: 4px;
-		margin-right: 0.3rem;
-	}
-
-	footer {
-		color: rgba(255, 255, 255, 0.06);
-		font-size: 0.65rem;
-		letter-spacing: 0.15em;
-		font-family: monospace;
+		to { transform: rotate(360deg); }
 	}
 </style>

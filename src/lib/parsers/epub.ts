@@ -16,9 +16,17 @@ export async function parseEpubFile(
 
 	let zip: JSZip;
 	try {
-		zip = await JSZip.loadAsync(await file.arrayBuffer());
-	} catch {
-		throw new Error('Invalid EPUB: could not read archive');
+		const buffer = await file.arrayBuffer();
+		if (buffer.byteLength === 0) {
+			throw new Error('File is empty');
+		}
+		zip = await JSZip.loadAsync(buffer);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		if (msg.includes('empty') || msg.includes('Empty')) {
+			throw new Error('EPUB file appears to be empty');
+		}
+		throw new Error(`Could not read EPUB archive. Make sure the file is a valid .epub file. (${msg})`);
 	}
 
 	// Validate EPUB: check mimetype

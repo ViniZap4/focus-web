@@ -24,7 +24,6 @@
 	function changeVoice(name: string) {
 		reader.settings.voice = name;
 		save();
-		// Restart speech with new voice if currently speaking
 		if (reader.isSpeaking) {
 			reader.stop();
 			reader.play();
@@ -68,7 +67,7 @@
 			</div>
 		</div>
 
-		<!-- Size + Height on one row -->
+		<!-- Size + Height -->
 		<div class="row dual">
 			<div class="slider-col">
 				<label for="sz">Size</label>
@@ -86,7 +85,7 @@
 			</div>
 		</div>
 
-		<!-- Spacing + Speed on one row -->
+		<!-- Spacing + Speed -->
 		<div class="row dual">
 			<div class="slider-col">
 				<label for="ls">Spacing</label>
@@ -104,7 +103,6 @@
 			</div>
 		</div>
 
-		<!-- Divider -->
 		<div class="divider"></div>
 
 		<!-- Voice -->
@@ -145,7 +143,6 @@
 			</div>
 		</div>
 
-		<!-- Divider -->
 		<div class="divider"></div>
 
 		<!-- Toggles -->
@@ -182,7 +179,7 @@
 		all: unset;
 		position: fixed;
 		inset: 0;
-		background: rgba(0,0,0,0.25);
+		background: rgba(0, 0, 0, 0.05);
 		z-index: 200;
 		animation: fadeIn 0.15s ease;
 	}
@@ -196,18 +193,18 @@
 		max-height: 70vh;
 		overflow-y: auto;
 		scrollbar-width: none;
-		background: rgba(18, 18, 18, 0.95);
+		background: rgba(255, 255, 255, 0.97);
 		backdrop-filter: blur(30px);
 		-webkit-backdrop-filter: blur(30px);
-		border: 1px solid rgba(255,255,255,0.05);
+		border: 1px solid rgba(0, 0, 0, 0.06);
 		border-radius: 18px;
 		padding: 0.85rem;
 		z-index: 201;
 		display: flex;
 		flex-direction: column;
 		gap: 0.6rem;
-		box-shadow: 0 12px 48px rgba(0,0,0,0.5);
-		animation: panelIn 0.3s cubic-bezier(0.16,1,0.3,1);
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.08);
+		animation: panelIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 	.panel::-webkit-scrollbar { display: none; }
 	@keyframes panelIn { from { opacity: 0; transform: translateY(10px) scale(0.97); } }
@@ -216,7 +213,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		color: rgba(255,255,255,0.4);
+		color: rgba(0, 0, 0, 0.35);
 		font-size: 0.65rem;
 		font-weight: 500;
 		text-transform: uppercase;
@@ -224,12 +221,12 @@
 	}
 	.x {
 		all: unset; cursor: pointer;
-		color: rgba(255,255,255,0.15); font-size: 1rem;
+		color: rgba(0, 0, 0, 0.2); font-size: 1rem;
 		width: 22px; height: 22px;
 		display: flex; align-items: center; justify-content: center;
 		border-radius: 7px; transition: all 0.2s;
 	}
-	.x:hover { color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); }
+	.x:hover { color: rgba(0, 0, 0, 0.5); background: rgba(0, 0, 0, 0.04); }
 
 	.row { display: flex; flex-direction: column; gap: 0.25rem; }
 
@@ -244,7 +241,7 @@
 		gap: 0.15rem;
 	}
 	.slider-col label, .inline-label {
-		color: rgba(255,255,255,0.18);
+		color: rgba(0, 0, 0, 0.25);
 		font-size: 0.55rem;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
@@ -257,11 +254,11 @@
 	}
 	.s-row input[type='range'] {
 		flex: 1;
-		accent-color: rgba(255,255,255,0.35);
+		accent-color: rgba(0, 0, 0, 0.3);
 		height: 3px;
 	}
 	.v {
-		color: rgba(255,255,255,0.15);
+		color: rgba(0, 0, 0, 0.2);
 		font-size: 0.55rem;
 		font-family: monospace;
 		font-variant-numeric: tabular-nums;
@@ -275,16 +272,16 @@
 		padding: 0.25rem 0.55rem;
 		border-radius: 7px;
 		font-size: 0.65rem;
-		color: rgba(255,255,255,0.2);
-		border: 1px solid rgba(255,255,255,0.04);
-		transition: all 0.25s cubic-bezier(0.16,1,0.3,1);
+		color: rgba(0, 0, 0, 0.25);
+		border: 1px solid rgba(0, 0, 0, 0.04);
+		transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 	}
-	.chip:hover { color: rgba(255,255,255,0.5); border-color: rgba(255,255,255,0.08); }
-	.chip.on { color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.1); }
+	.chip:hover { color: rgba(0, 0, 0, 0.5); border-color: rgba(0, 0, 0, 0.1); }
+	.chip.on { color: rgba(0, 0, 0, 0.7); background: rgba(0, 0, 0, 0.05); border-color: rgba(0, 0, 0, 0.1); }
 
 	.divider {
 		height: 1px;
-		background: rgba(255,255,255,0.03);
+		background: rgba(0, 0, 0, 0.04);
 		margin: 0.1rem 0;
 	}
 
@@ -294,26 +291,26 @@
 	}
 	.voice-pick select {
 		flex: 1;
-		background: rgba(255,255,255,0.03);
-		border: 1px solid rgba(255,255,255,0.05);
-		color: rgba(255,255,255,0.45);
+		background: rgba(0, 0, 0, 0.02);
+		border: 1px solid rgba(0, 0, 0, 0.06);
+		color: rgba(0, 0, 0, 0.45);
 		padding: 0.3rem 0.5rem;
 		border-radius: 8px;
 		font-size: 0.65rem;
 		outline: none;
 	}
-	.voice-pick select:focus { border-color: rgba(255,255,255,0.1); }
+	.voice-pick select:focus { border-color: rgba(0, 0, 0, 0.12); }
 
 	.play-voice {
 		all: unset; cursor: pointer;
 		width: 28px; height: 28px;
 		display: flex; align-items: center; justify-content: center;
 		border-radius: 8px;
-		color: rgba(255,255,255,0.2);
-		border: 1px solid rgba(255,255,255,0.04);
+		color: rgba(0, 0, 0, 0.25);
+		border: 1px solid rgba(0, 0, 0, 0.05);
 		transition: all 0.2s;
 	}
-	.play-voice:hover { color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); }
+	.play-voice:hover { color: rgba(0, 0, 0, 0.5); background: rgba(0, 0, 0, 0.03); }
 
 	.toggles {
 		flex-direction: column;
@@ -323,27 +320,27 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		color: rgba(255,255,255,0.2);
+		color: rgba(0, 0, 0, 0.3);
 		font-size: 0.6rem;
 	}
 	.tog {
 		all: unset; cursor: pointer;
 		width: 32px; height: 18px;
 		border-radius: 9px;
-		background: rgba(255,255,255,0.06);
+		background: rgba(0, 0, 0, 0.06);
 		position: relative;
 		transition: background 0.3s;
 	}
-	.tog.on { background: rgba(255,255,255,0.18); }
+	.tog.on { background: rgba(0, 0, 0, 0.2); }
 	.dot {
 		position: absolute;
 		top: 2px; left: 2px;
 		width: 14px; height: 14px;
 		border-radius: 50%;
-		background: rgba(255,255,255,0.45);
-		transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+		background: rgba(0, 0, 0, 0.3);
+		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
-	.tog.on .dot { left: 16px; background: white; }
+	.tog.on .dot { left: 16px; background: #1a1a1a; }
 
 	.keys {
 		display: flex;
@@ -352,13 +349,13 @@
 		padding-top: 0.2rem;
 	}
 	.keys span {
-		color: rgba(255,255,255,0.1);
+		color: rgba(0, 0, 0, 0.12);
 		font-size: 0.55rem;
 		white-space: nowrap;
 	}
 	.keys kbd {
-		background: rgba(255,255,255,0.04);
-		color: rgba(255,255,255,0.2);
+		background: rgba(0, 0, 0, 0.04);
+		color: rgba(0, 0, 0, 0.25);
 		padding: 0.05rem 0.25rem;
 		border-radius: 3px;
 		font-family: monospace;

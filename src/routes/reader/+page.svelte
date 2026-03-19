@@ -4,6 +4,7 @@
 	import { WordDisplay } from '../../blocks/Reader/WordDisplay';
 	import { FloatBar } from '../../blocks/Reader/FloatBar';
 	import { ImageViewer } from '../../blocks/ImageViewer';
+	import { SectionSelector } from '../../blocks/SectionSelector';
 	import { onMount, onDestroy } from 'svelte';
 
 	let ready = $state(false);
@@ -70,7 +71,11 @@
 				break;
 			case 'Escape':
 				e.preventDefault();
-				if (reader.activeMedia) {
+				if (reader.showSections) {
+					reader.showSections = false;
+				} else if (reader.showSettings) {
+					reader.showSettings = false;
+				} else if (reader.activeMedia) {
 					reader.dismissMedia();
 				}
 				break;
@@ -84,6 +89,7 @@
 	<div class="reader" class:ready>
 		<WordDisplay />
 		<FloatBar />
+		<SectionSelector />
 		<ImageViewer />
 	</div>
 {/if}
@@ -91,7 +97,7 @@
 <style>
 	.reader {
 		opacity: 0;
-		transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+		transition: opacity 0.6s var(--ease);
 	}
 
 	.reader.ready {
