@@ -299,12 +299,30 @@
 				</div>
 			</div>
 
-			<!-- Reading mode + advanced -->
+			<!-- Reading mode -->
 			<div class="p-section">
-				<span class="p-label">Mode</span>
-				<div class="chips">
-					<button class="chip" class:on={reader.settings.readingMode === 'scroll'} onclick={() => { reader.settings.readingMode = 'scroll'; save(); }}>Scroll</button>
-					<button class="chip" class:on={reader.settings.readingMode === 'rsvp'} onclick={() => { reader.settings.readingMode = 'rsvp'; save(); }}>RSVP</button>
+				<span class="p-label">Reading mode</span>
+				<div class="mode-grid">
+					<button class="mode-card" class:on={reader.settings.readingMode === 'scroll'} onclick={() => { reader.settings.readingMode = 'scroll'; save(); }}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="3" y1="18" x2="15" y2="18"/></svg>
+						<span>Scroll</span>
+						<span class="mode-desc">Word-by-word focus</span>
+					</button>
+					<button class="mode-card" class:on={reader.settings.readingMode === 'rsvp'} onclick={() => { reader.settings.readingMode = 'rsvp'; save(); }}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="8" width="18" height="8" rx="2"/><line x1="12" y1="4" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="20"/></svg>
+						<span>RSVP</span>
+						<span class="mode-desc">One word at a time</span>
+					</button>
+					<button class="mode-card" class:on={reader.settings.readingMode === 'paragraph'} onclick={() => { reader.settings.readingMode = 'paragraph'; save(); }}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg>
+						<span>Paragraph</span>
+						<span class="mode-desc">Section by section</span>
+					</button>
+					<button class="mode-card" class:on={reader.settings.readingMode === 'highlight'} onclick={() => { reader.settings.readingMode = 'highlight'; save(); }}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+						<span>Highlight</span>
+						<span class="mode-desc">Full text, line highlight</span>
+					</button>
 				</div>
 				{#if reader.settings.speedRamp}
 					<div class="sl-group">
@@ -512,22 +530,22 @@
 	.settings-side {
 		position: fixed;
 		top: 0;
-		right: 0;
+		left: 0;
 		bottom: 0;
 		width: min(88vw, 340px);
 		background: var(--glass);
 		backdrop-filter: blur(30px) saturate(1.4);
 		-webkit-backdrop-filter: blur(30px) saturate(1.4);
-		border-left: 1px solid var(--border);
+		border-right: 1px solid var(--border);
 		z-index: 151;
 		display: flex;
 		flex-direction: column;
-		box-shadow: -8px 0 32px rgba(0, 0, 0, 0.06);
-		animation: slideInRight 0.35s var(--ease);
+		box-shadow: 8px 0 32px rgba(0, 0, 0, 0.06);
+		animation: slideInLeft 0.35s var(--ease);
 		transition: background var(--dur-slow) var(--ease), border-color var(--dur-slow) var(--ease);
 	}
 
-	@keyframes slideInRight { from { transform: translateX(100%); } }
+	@keyframes slideInLeft { from { transform: translateX(-100%); } }
 
 	.settings-head {
 		display: flex;
@@ -658,6 +676,46 @@
 		transition: all var(--dur) var(--ease);
 	}
 	.tog.on .td { left: 17px; background: var(--bg); }
+
+	/* ── Mode grid ────────────────────────────────── */
+	.mode-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.35rem;
+	}
+
+	.mode-card {
+		all: unset; cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.55rem 0.4rem;
+		border-radius: 10px;
+		border: 1.5px solid var(--border);
+		text-align: center;
+		transition: all var(--dur) var(--ease);
+	}
+	.mode-card:hover { border-color: var(--border-h); background: var(--surface); }
+	.mode-card:active { transform: scale(0.97); }
+	.mode-card.on { border-color: var(--text-3); background: var(--surface-h); }
+
+	.mode-card span:nth-child(2) {
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: var(--text-2);
+	}
+	.mode-card.on span:nth-child(2) { color: var(--text); }
+
+	.mode-desc {
+		font-size: 0.55rem !important;
+		font-weight: 400 !important;
+		color: var(--text-4) !important;
+	}
+	.mode-card.on .mode-desc { color: var(--text-3) !important; }
+
+	.mode-card svg { color: var(--text-3); }
+	.mode-card.on svg { color: var(--text-2); }
 
 	.keys { display: flex; flex-wrap: wrap; gap: 0.3rem 0.6rem; padding-top: 0.3rem; }
 	.keys span { color: var(--text-4); font-size: 0.6rem; white-space: nowrap; }

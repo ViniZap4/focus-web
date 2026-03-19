@@ -238,7 +238,7 @@ export interface SearchResult {
 	text: string;
 }
 
-export type ReadingMode = 'scroll' | 'rsvp';
+export type ReadingMode = 'scroll' | 'rsvp' | 'paragraph' | 'highlight';
 
 const DEFAULT_SETTINGS: ReaderSettings = {
 	theme: 'auto',

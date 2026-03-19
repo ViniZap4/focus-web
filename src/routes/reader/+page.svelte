@@ -137,9 +137,7 @@
 	<div class="reader" class:ready class:zen={reader.settings.zenMode}>
 		{#if reader.settings.readingMode === 'rsvp'}
 			<div class="rsvp-view">
-				<div class="rsvp-progress">
-					<div class="rsvp-progress-fill" style="width:{reader.progress}%"></div>
-				</div>
+				<div class="rsvp-progress"><div class="rsvp-progress-fill" style="width:{reader.progress}%"></div></div>
 				<div class="rsvp-word" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{Math.min(reader.settings.fontSize * 1.8, 96)}px">
 					{#if reader.settings.bionicReading}
 						{@const w = reader.allWords[reader.currentWord]?.text || ''}
@@ -151,16 +149,37 @@
 				</div>
 				<div class="rsvp-controls">
 					<span class="rsvp-meta">{reader.currentWord + 1} / {reader.totalWords}</span>
-					<button class="rsvp-btn" onclick={() => reader.toggle()}>
-						{reader.isPlaying ? 'Pause' : 'Play'}
-					</button>
+					<button class="rsvp-btn" onclick={() => reader.toggle()}>{reader.isPlaying ? 'Pause' : 'Play'}</button>
 					<span class="rsvp-meta">{reader.settings.wpm} wpm</span>
-					<button class="rsvp-btn" onclick={() => reader.toggleSettings()}>
-						Settings
-					</button>
+					<button class="rsvp-btn" onclick={() => reader.toggleSettings()}>Settings</button>
 					<a href="/" class="rsvp-btn" onclick={() => reader.reset()}>Exit</a>
 				</div>
 			</div>
+
+		{:else if reader.settings.readingMode === 'paragraph'}
+			{@const line = reader.lines[reader.currentLineIndex]}
+			<div class="para-view" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{reader.settings.fontSize * 0.55}px;line-height:{reader.settings.lineHeight}">
+				{#if line}
+					<p class="para-text">
+						{#each line.words as w}
+							{@const d = w.globalIndex - reader.currentWord}
+							<span class="pw" class:pw-active={d === 0} class:pw-read={d < 0}>{w.text}</span>{' '}
+						{/each}
+					</p>
+					<span class="para-counter">{reader.currentLineIndex + 1} / {reader.lines.length}</span>
+				{/if}
+			</div>
+
+		{:else if reader.settings.readingMode === 'highlight'}
+			<div class="hl-view" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{reader.settings.fontSize * 0.45}px;line-height:{reader.settings.lineHeight * 0.9}">
+				{#each reader.lines as line (line.lineIndex)}
+					{@const dist = Math.abs(line.lineIndex - reader.currentLineIndex)}
+					<button class="hl-line" class:hl-active={dist === 0} class:hl-near={dist === 1} class:hl-far={dist > 1} onclick={() => reader.jumpToWord(line.words[0].globalIndex)}>
+						{line.words.map(w => w.text).join(' ')}
+					</button>
+				{/each}
+			</div>
+
 		{:else}
 			<WordDisplay />
 		{/if}
@@ -272,6 +291,75 @@
 		font-family: monospace;
 		font-variant-numeric: tabular-nums;
 	}
+
+	/* ── Paragraph mode ───────────────────────────── */
+	.para-view {
+		position: fixed;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		background: var(--bg);
+		padding: 2rem;
+		gap: 1.5rem;
+		z-index: 10;
+	}
+
+	.para-text {
+		max-width: 600px;
+		text-align: center;
+		color: var(--text-3);
+		margin: 0;
+	}
+
+	.pw { transition: color 0.15s var(--ease); }
+	.pw-active { color: var(--text); font-weight: 600; }
+	.pw-read { color: var(--text-4); }
+
+	.para-counter {
+		color: var(--text-4);
+		font-size: 0.6rem;
+		font-family: monospace;
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* ── Highlight mode ──────────────────────────── */
+	.hl-view {
+		position: fixed;
+		inset: 0;
+		overflow-y: auto;
+		scrollbar-width: none;
+		background: var(--bg);
+		padding: 15vh 2rem 30vh;
+		max-width: 700px;
+		margin: 0 auto;
+		z-index: 10;
+	}
+	.hl-view::-webkit-scrollbar { display: none; }
+
+	.hl-line {
+		all: unset;
+		display: block;
+		width: 100%;
+		text-align: left;
+		padding: 0.3em 0.6em;
+		border-radius: 6px;
+		cursor: pointer;
+		color: var(--text-4);
+		transition: all 0.25s var(--ease);
+		box-sizing: border-box;
+	}
+
+	.hl-line.hl-active {
+		color: var(--text);
+		background: var(--surface);
+		transform: scale(1.01);
+	}
+
+	.hl-line.hl-near { color: var(--text-3); }
+	.hl-line.hl-far { color: var(--text-5); }
+	.hl-line:hover:not(.hl-active) { color: var(--text-3); }
 
 	/* ── Search bar ────────────────────────────────── */
 	.search-bar {
