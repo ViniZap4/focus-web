@@ -155,15 +155,17 @@
 						{reader.isPlaying ? 'Pause' : 'Play'}
 					</button>
 					<span class="rsvp-meta">{reader.settings.wpm} wpm</span>
+					<button class="rsvp-btn" onclick={() => reader.toggleSettings()}>
+						Settings
+					</button>
+					<a href="/" class="rsvp-btn" onclick={() => reader.reset()}>Exit</a>
 				</div>
 			</div>
 		{:else}
 			<WordDisplay />
 		{/if}
 
-		{#if !reader.settings.zenMode && reader.settings.readingMode !== 'rsvp'}
-			<FloatBar />
-		{/if}
+		<FloatBar />
 
 		<SectionSelector />
 
@@ -260,8 +262,9 @@
 		font-weight: 500;
 		transition: all var(--dur) var(--ease);
 	}
-	.rsvp-btn:hover { background: var(--surface-a); color: var(--text); }
+	.rsvp-btn:hover { background: var(--surface-a); color: var(--text); text-decoration: none; }
 	.rsvp-btn:active { transform: scale(0.95); }
+	a.rsvp-btn { text-decoration: none; }
 
 	.rsvp-meta {
 		color: var(--text-4);

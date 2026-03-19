@@ -98,7 +98,7 @@
 
 </script>
 
-<div class="bar">
+<div class="bar" class:bar-hidden={reader.settings.zenMode || reader.settings.readingMode === 'rsvp'}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		bind:this={progEl}
@@ -397,6 +397,12 @@
 			border-color var(--dur-slow) var(--ease),
 			box-shadow var(--dur-slow) var(--ease);
 	}
+	.bar-hidden {
+		opacity: 0;
+		transform: translateX(-50%) translateY(100%);
+		pointer-events: none;
+	}
+
 	/* ── Progress scrubber ─────────────────────────── */
 	.prog {
 		height: 4px;
