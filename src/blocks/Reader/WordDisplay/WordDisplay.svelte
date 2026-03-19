@@ -157,7 +157,7 @@
 	<div
 		bind:this={viewport}
 		class="vp"
-		style="font-family:'{reader.settings.fontFamily}',system-ui,sans-serif;font-size:{reader.settings.fontSize}px;letter-spacing:{reader.settings.letterSpacing}px;line-height:{reader.settings.lineHeight}"
+		style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui,sans-serif;font-size:{reader.settings.fontSize}px;letter-spacing:{reader.settings.dyslexiaFont ? '0.12em' : reader.settings.letterSpacing + 'px'};line-height:{reader.settings.dyslexiaFont ? 2.2 : reader.settings.lineHeight};word-spacing:{reader.settings.dyslexiaFont ? '0.16em' : 'normal'}"
 	>
 		<div bind:this={cursorEl} class="cursor"></div>
 		<div class="pad"></div>
@@ -174,12 +174,16 @@
 						{@const d = w.globalIndex - reader.currentWord}
 						{@const isFocused = d >= 0 && d < reader.focusCount}
 						{@const isClose = !isFocused && d >= -4 && d <= reader.focusCount + 3}
+						{@const isBookmarked = reader.isBookmarked(w.globalIndex)}
+						{@const isSearchHit = reader.searchQuery && w.text.toLowerCase().includes(reader.searchQuery.toLowerCase())}
 						<button
 							class="w"
 							class:active={isFocused}
 							class:primary={d === 0}
 							class:near={isClose}
 							class:dim={!isFocused && !isClose}
+							class:bookmarked={isBookmarked}
+							class:search-hit={isSearchHit}
 							data-focus={isFocused ? '' : undefined}
 							data-primary={d === 0 ? '' : undefined}
 							onclick={() => {
@@ -187,6 +191,7 @@
 								const m = reader.media.find((x) => x.triggerAtWord === w.globalIndex);
 								if (m) reader.showMediaItem(m);
 							}}
+							ondblclick={() => reader.toggleBookmark(w.globalIndex)}
 						>{#if reader.settings.bionicReading}{@const split = Math.ceil(w.text.length * reader.settings.bionicStrength)}<span class="bb">{w.text.slice(0, split)}</span>{w.text.slice(split)}{:else}{w.text}{/if}</button>
 					{/each}
 				{:else}
@@ -415,6 +420,8 @@
 	.w.near { color: var(--text-3); }
 	.w.dim { color: var(--text-5); }
 	.w:hover:not(.active) { color: var(--text-2); transition-duration: 0.08s; }
+	.w.bookmarked { border-bottom: 2px solid var(--text-3); padding-bottom: 0.02em; }
+	.w.search-hit { background: var(--surface-a); border-radius: 4px; }
 
 	.mask { position: fixed; right: 0; height: 28vh; pointer-events: none; z-index: 50; left: 0;
 		transition: left var(--dur-slow) var(--ease), background var(--dur-slow) var(--ease); }

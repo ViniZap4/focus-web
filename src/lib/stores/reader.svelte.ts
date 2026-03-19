@@ -208,6 +208,11 @@ export interface ReaderSettings {
 	bionicReading: boolean;
 	bionicStrength: number;
 	sentencePause: number;
+	readingMode: ReadingMode;
+	zenMode: boolean;
+	dyslexiaFont: boolean;
+	speedRamp: boolean;
+	speedRampMax: number;
 }
 
 export interface ReadingSession {
@@ -218,6 +223,20 @@ export interface ReadingSession {
 	lastRead: number;
 	textHash: string;
 }
+
+export interface Bookmark {
+	wordIndex: number;
+	text: string;
+	note: string;
+	timestamp: number;
+}
+
+export interface SearchResult {
+	wordIndex: number;
+	text: string;
+}
+
+export type ReadingMode = 'scroll' | 'rsvp';
 
 const DEFAULT_SETTINGS: ReaderSettings = {
 	theme: 'auto',
@@ -237,7 +256,12 @@ const DEFAULT_SETTINGS: ReaderSettings = {
 	pauseOnMedia: true,
 	bionicReading: false,
 	bionicStrength: 0.5,
-	sentencePause: 0.3
+	sentencePause: 0.3,
+	readingMode: 'scroll' as ReadingMode,
+	zenMode: false,
+	dyslexiaFont: false,
+	speedRamp: false,
+	speedRampMax: 400
 };
 
 function loadSettings(): ReaderSettings {
@@ -283,6 +307,13 @@ class ReaderState {
 	parseProgress = $state(0);
 	isParsing = $state(false);
 	parsedSections = $state<Section[]>([]);
+	bookmarks = $state<Bookmark[]>([]);
+	searchQuery = $state('');
+	searchResults = $state<SearchResult[]>([]);
+	searchIndex = $state(-1);
+	showSearch = $state(false);
+	readingStartTime = $state(0);
+	wordsReadThisSession = $state(0);
 
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private keepAlive: ReturnType<typeof setInterval> | null = null;
@@ -390,6 +421,11 @@ class ReaderState {
 		this.currentWord = 0;
 		this.lastCheckedWord = 0;
 		this.activeMedia = null;
+		this.bookmarks = [];
+		this.searchQuery = '';
+		this.searchResults = [];
+		this.readingStartTime = 0;
+		this.wordsReadThisSession = 0;
 
 		const prevLang = this.detectedLang;
 
@@ -425,6 +461,7 @@ class ReaderState {
 	advance() {
 		if (this.currentWord < this.totalWords - 1) {
 			this.currentWord++;
+			this.wordsReadThisSession++;
 			this.checkMedia();
 		}
 	}
@@ -498,6 +535,8 @@ class ReaderState {
 
 		this.isPlaying = true;
 		this.isPaused = false;
+		this.rampStartWord = this.currentWord;
+		if (this.readingStartTime === 0) this.startSession();
 
 		// Try speech mode. Falls back to timer if onboundary doesn't fire.
 		this.startSpeechMode(this.currentWord);
@@ -712,7 +751,8 @@ class ReaderState {
 			}
 		};
 
-		const ms = Math.max(50, (60 / this.settings.wpm) * 1000);
+		const wpm = this.getRampedWpm();
+		const ms = Math.max(50, (60 / wpm) * 1000);
 		this.timer = setInterval(tick, ms);
 	}
 
@@ -802,6 +842,110 @@ class ReaderState {
 		}
 	}
 
+	// ── Bookmarks ────────────────────────────────────────────────────────
+
+	toggleBookmark(wordIndex?: number) {
+		const idx = wordIndex ?? this.currentWord;
+		const existing = this.bookmarks.findIndex((b) => b.wordIndex === idx);
+		if (existing >= 0) {
+			this.bookmarks = this.bookmarks.filter((_, i) => i !== existing);
+		} else {
+			const words = this.allWords.slice(idx, idx + 10).map((w) => w.text).join(' ');
+			this.bookmarks = [
+				...this.bookmarks,
+				{ wordIndex: idx, text: words, note: '', timestamp: Date.now() }
+			];
+		}
+		this.saveBookmarks();
+	}
+
+	isBookmarked(wordIndex: number): boolean {
+		return this.bookmarks.some((b) => b.wordIndex === wordIndex);
+	}
+
+	private saveBookmarks() {
+		if (typeof window === 'undefined' || !this.text) return;
+		const key = 'focus-bm-' + this.text.slice(0, 50).replace(/\W/g, '');
+		localStorage.setItem(key, JSON.stringify(this.bookmarks));
+	}
+
+	loadBookmarks() {
+		if (typeof window === 'undefined' || !this.text) return;
+		const key = 'focus-bm-' + this.text.slice(0, 50).replace(/\W/g, '');
+		try {
+			this.bookmarks = JSON.parse(localStorage.getItem(key) || '[]');
+		} catch {
+			this.bookmarks = [];
+		}
+	}
+
+	// ── Search ────────────────────────────────────────────────────────────
+
+	search(query: string) {
+		this.searchQuery = query;
+		if (!query.trim()) {
+			this.searchResults = [];
+			this.searchIndex = -1;
+			return;
+		}
+		const q = query.toLowerCase();
+		const results: SearchResult[] = [];
+		for (const w of this.allWords) {
+			if (w.text.toLowerCase().includes(q)) {
+				results.push({ wordIndex: w.globalIndex, text: w.text });
+			}
+		}
+		this.searchResults = results;
+		this.searchIndex = results.length > 0 ? 0 : -1;
+		if (results.length > 0) {
+			this.jumpToWord(results[0].wordIndex);
+		}
+	}
+
+	searchNext() {
+		if (this.searchResults.length === 0) return;
+		this.searchIndex = (this.searchIndex + 1) % this.searchResults.length;
+		this.jumpToWord(this.searchResults[this.searchIndex].wordIndex);
+	}
+
+	searchPrev() {
+		if (this.searchResults.length === 0) return;
+		this.searchIndex = (this.searchIndex - 1 + this.searchResults.length) % this.searchResults.length;
+		this.jumpToWord(this.searchResults[this.searchIndex].wordIndex);
+	}
+
+	// ── Reading Stats ─────────────────────────────────────────────────────
+
+	startSession() {
+		this.readingStartTime = Date.now();
+		this.wordsReadThisSession = 0;
+	}
+
+	getSessionDuration(): number {
+		if (this.readingStartTime === 0) return 0;
+		return Math.floor((Date.now() - this.readingStartTime) / 1000);
+	}
+
+	getActualWpm(): number {
+		const secs = this.getSessionDuration();
+		if (secs < 5) return 0;
+		return Math.round((this.wordsReadThisSession / secs) * 60);
+	}
+
+	// ── Speed Ramp ────────────────────────────────────────────────────────
+
+	private rampStartWord = 0;
+
+	private getRampedWpm(): number {
+		if (!this.settings.speedRamp) return this.settings.wpm;
+		const wordsRead = this.currentWord - this.rampStartWord;
+		const rampWords = 200; // ramp over 200 words
+		const t = Math.min(1, wordsRead / rampWords);
+		const startWpm = this.settings.wpm;
+		const endWpm = this.settings.speedRampMax;
+		return Math.round(startWpm + (endWpm - startWpm) * t * t); // quadratic ease
+	}
+
 	reset() {
 		this.saveProgress();
 		this.stop();
@@ -815,6 +959,11 @@ class ReaderState {
 		this.parseProgress = 0;
 		this.isParsing = false;
 		this.parsedSections = [];
+		this.bookmarks = [];
+		this.searchQuery = '';
+		this.searchResults = [];
+		this.searchIndex = -1;
+		this.showSearch = false;
 	}
 }
 

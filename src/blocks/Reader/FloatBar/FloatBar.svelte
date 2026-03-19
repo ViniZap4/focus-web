@@ -304,7 +304,43 @@
 				</div>
 			</div>
 
+			<!-- Reading mode + advanced -->
+			<div class="p-section">
+				<span class="p-label">Mode</span>
+				<div class="chips">
+					<button class="chip" class:on={reader.settings.readingMode === 'scroll'} onclick={() => { reader.settings.readingMode = 'scroll'; save(); }}>Scroll</button>
+					<button class="chip" class:on={reader.settings.readingMode === 'rsvp'} onclick={() => { reader.settings.readingMode = 'rsvp'; save(); }}>RSVP</button>
+				</div>
+				{#if reader.settings.speedRamp}
+					<div class="sl-group">
+						<div class="sl-head"><span class="sl-label">Ramp to</span><span class="sl-val">{reader.settings.speedRampMax} wpm</span></div>
+						<input type="range" min="200" max="600" step="20" bind:value={reader.settings.speedRampMax} oninput={save} />
+					</div>
+				{/if}
+			</div>
+
 			<div class="p-section no-border">
+				<label class="toggle-row">
+					<span>Zen mode</span>
+					<button class="tog" class:on={reader.settings.zenMode} aria-label="Zen mode"
+						onclick={() => { reader.settings.zenMode = !reader.settings.zenMode; save(); }}>
+						<span class="td"></span>
+					</button>
+				</label>
+				<label class="toggle-row">
+					<span>Speed ramp</span>
+					<button class="tog" class:on={reader.settings.speedRamp} aria-label="Speed ramp"
+						onclick={() => { reader.settings.speedRamp = !reader.settings.speedRamp; save(); }}>
+						<span class="td"></span>
+					</button>
+				</label>
+				<label class="toggle-row">
+					<span>Dyslexia font</span>
+					<button class="tog" class:on={reader.settings.dyslexiaFont} aria-label="Dyslexia font"
+						onclick={() => { reader.settings.dyslexiaFont = !reader.settings.dyslexiaFont; save(); }}>
+						<span class="td"></span>
+					</button>
+				</label>
 				<label class="toggle-row">
 					<span>Pause on interact</span>
 					<button class="tog" class:on={reader.settings.pauseOnMedia} aria-label="Pause on interact"
@@ -329,13 +365,16 @@
 			</div>
 
 			<div class="keys">
-				<span><kbd>→</kbd> <kbd>j</kbd> <kbd>spc</kbd> next</span>
-				<span><kbd>←</kbd> <kbd>k</kbd> prev</span>
+				<span><kbd>→</kbd><kbd>j</kbd><kbd>spc</kbd> next</span>
+				<span><kbd>←</kbd><kbd>k</kbd> prev</span>
 				<span><kbd>↓↑</kbd> line</span>
 				<span><kbd>p</kbd> play</span>
 				<span><kbd>s</kbd> speak</span>
 				<span><kbd>+</kbd><kbd>-</kbd> speed</span>
 				<span><kbd>b</kbd> bionic</span>
+				<span><kbd>f</kbd> zen</span>
+				<span><kbd>m</kbd> bookmark</span>
+				<span><kbd>⌘F</kbd> search</span>
 			</div>
 		</div>
 	{/if}
