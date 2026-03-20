@@ -320,6 +320,7 @@ class ReaderState {
 	wordsReadThisSession = $state(0);
 
 	private timer: ReturnType<typeof setInterval> | null = null;
+	private pauseTimer: ReturnType<typeof setTimeout> | null = null;
 	private keepAlive: ReturnType<typeof setInterval> | null = null;
 	private fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
 	private speechGen = 0; // generation counter to ignore stale events
@@ -693,13 +694,14 @@ class ReaderState {
 			if (gen !== this.speechGen) return;
 			this.clearKeepAlive();
 			// Chain next chunk if there's more text
-			if (this.isPlaying && this.currentWord < this.totalWords - 1) {
-				const nextWord = Math.min(baseWord + words.length, this.totalWords - 1);
-				if (nextWord > this.currentWord) this.currentWord = nextWord;
+			const nextWord = Math.min(baseWord + words.length, this.totalWords - 1);
+			if (this.isPlaying && nextWord > this.currentWord && nextWord < this.totalWords) {
+				this.currentWord = nextWord;
+				this.wordsReadThisSession += nextWord - baseWord;
 				this.startSpeechMode(this.currentWord);
 			} else {
 				this.isSpeaking = false;
-				this.stop();
+				if (this.currentWord >= this.totalWords - 1) this.stop();
 			}
 		};
 
@@ -751,9 +753,10 @@ class ReaderState {
 				const isPunctuation = /[.!?;:]$/.test(word);
 				if (isPunctuation && this.settings.sentencePause > 0) {
 					this.stopTimer();
-					this.timer = setTimeout(() => {
+					this.pauseTimer = setTimeout(() => {
+						this.pauseTimer = null;
 						if (this.isPlaying) this.startTimerMode();
-					}, this.settings.sentencePause * 1000) as unknown as ReturnType<typeof setInterval>;
+					}, this.settings.sentencePause * 1000);
 					return;
 				}
 			} else {
@@ -772,6 +775,10 @@ class ReaderState {
 		if (this.timer) {
 			clearInterval(this.timer);
 			this.timer = null;
+		}
+		if (this.pauseTimer) {
+			clearTimeout(this.pauseTimer);
+			this.pauseTimer = null;
 		}
 	}
 
