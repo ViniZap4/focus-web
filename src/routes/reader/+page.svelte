@@ -5,6 +5,7 @@
 	import { WordDisplay } from '../../blocks/Reader/WordDisplay';
 	import { FloatBar } from '../../blocks/Reader/FloatBar';
 	import { SectionSelector } from '../../blocks/SectionSelector';
+	import { SettingsPanel } from '../../blocks/Reader/SettingsPanel';
 	import { onMount, onDestroy } from 'svelte';
 
 	let ready = $state(false);
@@ -203,6 +204,24 @@
 			{/if}
 		{/if}
 
+		<!-- ── Settings side panel (works for ALL modes) ── -->
+		{#if reader.showSettings && reader.settings.readingMode !== 'scroll'}
+			<div class="settings-overlay">
+				<button class="settings-overlay-close" onclick={() => (reader.showSettings = false)} aria-label="Close settings"></button>
+				<div class="settings-panel-standalone">
+					<div class="sp-head">
+						<span class="sp-title">Settings</span>
+						<button class="sp-close" onclick={() => (reader.showSettings = false)}>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+						</button>
+					</div>
+					<div class="sp-body">
+						<SettingsPanel />
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<!-- ── Shared UI ────────────────────────────────── -->
 		<FloatBar />
 		<SectionSelector />
@@ -366,6 +385,59 @@
 	.link-modal:hover { background: var(--surface-h); color: var(--text); }
 
 	.modal-caption { color: var(--text-4); font-size: 0.6rem; text-align: center; }
+
+	/* ── Settings standalone panel (non-scroll modes) */
+	.settings-overlay {
+		position: fixed; inset: 0; z-index: 150;
+		display: flex;
+	}
+
+	.settings-overlay-close {
+		all: unset;
+		flex: 1;
+		cursor: default;
+	}
+
+	.settings-panel-standalone {
+		width: min(88vw, 340px);
+		height: 100%;
+		background: var(--glass);
+		backdrop-filter: blur(30px) saturate(1.4);
+		-webkit-backdrop-filter: blur(30px) saturate(1.4);
+		border-right: 1px solid var(--border);
+		display: flex;
+		flex-direction: column;
+		box-shadow: 8px 0 32px rgba(0, 0, 0, 0.06);
+		animation: slideLeft 0.3s var(--ease);
+		transition: background var(--dur-slow) var(--ease);
+	}
+
+	@keyframes slideLeft { from { transform: translateX(-100%); } }
+
+	.sp-head {
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 0.9rem 1rem 0.6rem;
+	}
+
+	.sp-title { color: var(--text); font-size: 0.85rem; font-weight: 600; }
+
+	.sp-close {
+		all: unset; cursor: pointer;
+		width: 28px; height: 28px;
+		display: flex; align-items: center; justify-content: center;
+		border-radius: 8px; color: var(--text-3);
+		transition: all var(--dur) var(--ease);
+	}
+	.sp-close:hover { color: var(--text); background: var(--surface); }
+
+	.sp-body {
+		flex: 1;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		padding: 0.3rem 1rem 2rem;
+	}
+	.sp-body::-webkit-scrollbar { width: 3px; }
+	.sp-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 	/* ── Search bar ────────────────────────────────── */
 	.search-bar {

@@ -74,12 +74,20 @@
 			<button class="lang-badge" onclick={redetectLang} title="Re-detect language">
 				{reader.detectedLang}
 			</button>
+			<span class="mode-tag">{reader.settings.readingMode}</span>
 		</div>
 
 		<div class="group transport">
-			<button class="tb" disabled={reader.isAtStart} onclick={() => { const p = reader.lines[reader.currentLineIndex - 1]; if (p) reader.jumpToWord(p.words[0].globalIndex); }} title="Previous line">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 20L9 12l10-8v16zM7 4h-2v16h2V4z"/></svg>
-			</button>
+			{#if reader.settings.readingMode === 'scroll' || reader.settings.readingMode === 'highlight'}
+				<button class="tb" disabled={reader.isAtStart} onclick={() => { const p = reader.lines[reader.currentLineIndex - 1]; if (p) reader.jumpToWord(p.words[0].globalIndex); }} title="Previous line">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 20L9 12l10-8v16zM7 4h-2v16h2V4z"/></svg>
+				</button>
+			{:else}
+				<button class="tb" disabled={reader.isAtStart} onclick={() => reader.goBack()} title="Previous word">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+				</button>
+			{/if}
+
 			<button class="tb play" onclick={() => reader.toggle()} title={reader.isPlaying ? 'Pause (p)' : 'Play (p)'}>
 				{#if reader.isPlaying}
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg>
@@ -87,9 +95,16 @@
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v14.72a1 1 0 001.5.86l11-7.36a1 1 0 000-1.72l-11-7.36A1 1 0 008 5.14z"/></svg>
 				{/if}
 			</button>
-			<button class="tb" disabled={reader.isAtEnd} onclick={() => { const n = reader.lines[reader.currentLineIndex + 1]; if (n) reader.jumpToWord(n.words[0].globalIndex); }} title="Next line">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l10 8-10 8V4zM17 4h2v16h-2V4z"/></svg>
-			</button>
+
+			{#if reader.settings.readingMode === 'scroll' || reader.settings.readingMode === 'highlight'}
+				<button class="tb" disabled={reader.isAtEnd} onclick={() => { const n = reader.lines[reader.currentLineIndex + 1]; if (n) reader.jumpToWord(n.words[0].globalIndex); }} title="Next line">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l10 8-10 8V4zM17 4h2v16h-2V4z"/></svg>
+				</button>
+			{:else}
+				<button class="tb" disabled={reader.isAtEnd} onclick={() => reader.advance()} title="Next word">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+				</button>
+			{/if}
 		</div>
 
 		<div class="group">
@@ -98,7 +113,7 @@
 					<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>
 				</svg>
 			</button>
-			<span class="meta">{reader.currentWord + 1}/{reader.totalWords}{reader.etaMinutes > 0 ? ` · ${reader.etaMinutes}m` : ''}</span>
+			<span class="meta">{reader.currentWord + 1}/{reader.totalWords}{reader.etaMinutes > 0 ? ` · ${reader.etaMinutes}m` : ''}{reader.settings.wpm ? ` · ${reader.settings.wpm}` : ''}</span>
 			<button class="ic" class:active={reader.showSettings} onclick={() => reader.toggleSettings()} title="Settings">
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 					<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/>
@@ -211,6 +226,16 @@
 	}
 	.lang-badge:hover { background: var(--surface-h); color: var(--text-2); }
 	.lang-badge:active { transform: scale(0.94); }
+
+	.mode-tag {
+		padding: 0.18rem 0.4rem;
+		border-radius: 5px;
+		background: var(--surface);
+		color: var(--text-4);
+		font-size: 0.5rem; font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
 
 	.tb {
 		all: unset; cursor: pointer;
