@@ -110,41 +110,56 @@
 
 		<!-- ── Reading modes ──────────────────────────── -->
 		{#if reader.settings.readingMode === 'rsvp'}
+			{@const curWord = reader.allWords[reader.currentWord]}
+			{@const nextWords = reader.allWords.slice(reader.currentWord + 1, reader.currentWord + 6)}
 			<div class="rsvp-view">
 				<div class="rsvp-progress"><div class="rsvp-progress-fill" style="width:{reader.progress}%"></div></div>
 				<div class="rsvp-word" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{Math.min(reader.settings.fontSize * 1.8, 96)}px">
-					{#if reader.settings.bionicReading}
-						{@const w = reader.allWords[reader.currentWord]?.text || ''}
-						{@const s = Math.ceil(w.length * reader.settings.bionicStrength)}
-						<span class="rsvp-bold">{w.slice(0, s)}</span>{w.slice(s)}
+					{#if reader.settings.bionicReading && curWord}
+						{@const s = Math.ceil(curWord.text.length * reader.settings.bionicStrength)}
+						<span class="rsvp-bold">{curWord.text.slice(0, s)}</span>{curWord.text.slice(s)}
 					{:else}
-						{reader.allWords[reader.currentWord]?.text || ''}
+						{curWord?.text || ''}
 					{/if}
 				</div>
+				<div class="rsvp-upcoming">{nextWords.map(w => w.text).join(' ')}</div>
 			</div>
 
 		{:else if reader.settings.readingMode === 'paragraph'}
-			{@const line = reader.lines[reader.currentLineIndex]}
-			<div class="para-view" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{reader.settings.fontSize * 0.55}px;line-height:{reader.settings.lineHeight}">
-				{#if line}
+			{@const ci = reader.currentLineIndex}
+			{@const prevLine = ci > 0 ? reader.lines[ci - 1] : null}
+			{@const curLine = reader.lines[ci]}
+			{@const nextLine = ci < reader.lines.length - 1 ? reader.lines[ci + 1] : null}
+			<div class="para-view" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{reader.settings.fontSize * 0.5}px;line-height:{reader.settings.lineHeight}">
+				{#if prevLine}
+					<p class="para-context">{prevLine.words.map(w => w.text).join(' ')}</p>
+				{/if}
+				{#if curLine}
 					<p class="para-text">
-						{#each line.words as w}
+						{#each curLine.words as w}
 							{@const d = w.globalIndex - reader.currentWord}
 							<span class="pw" class:pw-active={d === 0} class:pw-read={d < 0}>{w.text}</span>{' '}
 						{/each}
 					</p>
-					<span class="para-counter">{reader.currentLineIndex + 1} / {reader.lines.length}</span>
 				{/if}
+				{#if nextLine}
+					<p class="para-context para-next">{nextLine.words.map(w => w.text).join(' ')}</p>
+				{/if}
+				<span class="para-counter">{ci + 1} / {reader.lines.length}</span>
 			</div>
 
 		{:else if reader.settings.readingMode === 'highlight'}
-			<div class="hl-view" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{reader.settings.fontSize * 0.45}px;line-height:{reader.settings.lineHeight * 0.9}">
-				{#each reader.lines as line (line.lineIndex)}
+			{@const hlStart = Math.max(0, reader.currentLineIndex - 15)}
+			{@const hlEnd = Math.min(reader.lines.length, reader.currentLineIndex + 15)}
+			<div class="hl-view" style="font-family:{reader.settings.dyslexiaFont ? "'OpenDyslexic','Comic Sans MS'" : `'${reader.settings.fontFamily}'`},system-ui;font-size:{reader.settings.fontSize * 0.42}px;line-height:{reader.settings.lineHeight * 0.85}">
+				<div class="hl-pad"></div>
+				{#each reader.lines.slice(hlStart, hlEnd) as line (line.lineIndex)}
 					{@const dist = Math.abs(line.lineIndex - reader.currentLineIndex)}
-					<button class="hl-line" class:hl-active={dist === 0} class:hl-near={dist === 1} class:hl-far={dist > 1} onclick={() => reader.jumpToWord(line.words[0].globalIndex)}>
+					<button class="hl-line" class:hl-active={dist === 0} class:hl-near={dist <= 2} class:hl-far={dist > 2} onclick={() => reader.jumpToWord(line.words[0].globalIndex)}>
 						{line.words.map(w => w.text).join(' ')}
 					</button>
 				{/each}
+				<div class="hl-pad"></div>
 			</div>
 
 		{:else}
@@ -265,6 +280,13 @@
 		transition: color var(--dur-slow) var(--ease); min-height: 1.2em;
 	}
 	.rsvp-bold { font-weight: 700; }
+	.rsvp-upcoming {
+		color: var(--text-4);
+		font-size: 0.85rem;
+		max-width: 400px;
+		text-align: center;
+		line-height: 1.6;
+	}
 	.rsvp-progress { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--surface); }
 	.rsvp-progress-fill { height: 100%; background: var(--text-4); transition: width 0.3s var(--ease); }
 
@@ -274,6 +296,12 @@
 		display: flex; flex-direction: column; align-items: center; justify-content: center;
 		background: var(--bg); padding: 2rem; gap: 1.5rem; z-index: 10;
 	}
+	.para-context {
+		max-width: 600px; text-align: center; color: var(--text-5); margin: 0;
+		font-size: 0.85em;
+		transition: opacity 0.3s var(--ease);
+	}
+	.para-next { color: var(--text-4); }
 	.para-text { max-width: 600px; text-align: center; color: var(--text-3); margin: 0; }
 	.pw { transition: color 0.15s var(--ease); }
 	.pw-active { color: var(--text); font-weight: 600; }
@@ -288,15 +316,16 @@
 		max-width: 700px; margin: 0 auto; z-index: 10;
 	}
 	.hl-view::-webkit-scrollbar { display: none; }
+	.hl-pad { height: 30vh; flex-shrink: 0; }
 	.hl-line {
 		all: unset; display: block; width: 100%; text-align: left;
-		padding: 0.3em 0.6em; border-radius: 6px; cursor: pointer;
-		color: var(--text-4); transition: all 0.25s var(--ease); box-sizing: border-box;
+		padding: 0.35em 0.7em; border-radius: 8px; cursor: pointer;
+		color: var(--text-5); transition: all 0.25s var(--ease); box-sizing: border-box;
 	}
-	.hl-line.hl-active { color: var(--text); background: var(--surface); transform: scale(1.01); }
+	.hl-line.hl-active { color: var(--text); background: var(--surface-h); font-weight: 500; }
 	.hl-line.hl-near { color: var(--text-3); }
 	.hl-line.hl-far { color: var(--text-5); }
-	.hl-line:hover:not(.hl-active) { color: var(--text-3); }
+	.hl-line:hover:not(.hl-active) { color: var(--text-2); background: var(--surface); }
 
 	/* ── Media modal ─────────────────────────────── */
 	.modal-backdrop {
