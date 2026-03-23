@@ -1,14 +1,13 @@
 <script lang="ts">
 	import { reader } from '$lib/stores';
 	import type { MediaItem } from '$lib/stores/reader.svelte';
-	import { SettingsPanel } from '../SettingsPanel';
 
 	let viewport: HTMLDivElement | undefined = $state();
 	let cursorEl: HTMLDivElement | undefined = $state();
 	let raf = 0;
 
 	const hasMedia = $derived(reader.activeMedia != null && reader.settings.mediaDisplay === 'inline');
-	const hasLeftPanel = $derived(hasMedia || reader.showSettings);
+	const hasLeftPanel = $derived(hasMedia);
 	const RENDER_WINDOW = 6;
 	let zoomImage = $state<string | null>(null);
 
@@ -155,10 +154,6 @@
 				<span class="media-caption">{item.label}</span>
 			{/if}
 
-		{:else}
-			<div class="settings-in-panel">
-				<SettingsPanel />
-			</div>
 		{/if}
 		</div>
 	{/if}
@@ -383,14 +378,6 @@
 	.link-label { font-size: 0.8rem; font-weight: 500; }
 	.link-url { font-size: 0.6rem; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-	.settings-in-panel {
-		width: 100%;
-		overflow-y: auto;
-		scrollbar-width: thin;
-		padding: 0 0.2rem;
-	}
-	.settings-in-panel::-webkit-scrollbar { width: 3px; }
-	.settings-in-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 	.media-caption {
 		color: var(--text-4);

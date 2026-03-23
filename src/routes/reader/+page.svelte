@@ -220,7 +220,7 @@
 		{/if}
 
 		<!-- ── Settings side panel (works for ALL modes) ── -->
-		{#if reader.showSettings && reader.settings.readingMode !== 'scroll'}
+		{#if reader.showSettings}
 			<div class="settings-overlay">
 				<button class="settings-overlay-close" onclick={() => (reader.showSettings = false)} aria-label="Close settings"></button>
 				<div class="settings-panel-standalone">

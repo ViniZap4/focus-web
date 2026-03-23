@@ -880,6 +880,25 @@ class ReaderState {
 		}
 	}
 
+	deleteSession(textHash: string) {
+		if (typeof window === 'undefined') return;
+		const sessions: ReadingSession[] = JSON.parse(localStorage.getItem('focus-history') || '[]');
+		const filtered = sessions.filter((s) => s.textHash !== textHash);
+		localStorage.setItem('focus-history', JSON.stringify(filtered));
+		const key = 'focus-text-' + textHash.replace(/\W/g, '').slice(0, 30);
+		localStorage.removeItem(key);
+	}
+
+	clearHistory() {
+		if (typeof window === 'undefined') return;
+		const sessions: ReadingSession[] = JSON.parse(localStorage.getItem('focus-history') || '[]');
+		for (const s of sessions) {
+			const key = 'focus-text-' + s.textHash.replace(/\W/g, '').slice(0, 30);
+			localStorage.removeItem(key);
+		}
+		localStorage.removeItem('focus-history');
+	}
+
 	// ── Bookmarks ────────────────────────────────────────────────────────
 
 	toggleBookmark(wordIndex?: number) {

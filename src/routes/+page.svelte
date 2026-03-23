@@ -172,24 +172,32 @@
 
 	{#if history.length > 0}
 		<div class="history stagger" style="transition-delay:150ms">
-			<span class="section-label">Continue reading</span>
+			<div class="history-head">
+				<span class="section-label">Continue reading</span>
+				<button class="history-clear" onclick={() => { reader.clearHistory(); history = []; }}>Clear all</button>
+			</div>
 			<div class="history-list">
 				{#each history.slice(0, 3) as session}
-					<button class="history-item" onclick={() => resumeReading(session)}>
-						<div class="hi-top">
-							<span class="hi-title">{session.title}</span>
-							<span class="hi-time">{formatTimeAgo(session.lastRead)}</span>
-						</div>
-						{#if session.textPreview}
-							<span class="hi-preview">{session.textPreview}</span>
-						{/if}
-						<div class="hi-bottom">
-							<div class="hi-bar">
-								<div class="hi-fill" style="width:{(session.currentWord / session.totalWords) * 100}%"></div>
+					<div class="history-item">
+						<button class="hi-content" onclick={() => resumeReading(session)}>
+							<div class="hi-top">
+								<span class="hi-title">{session.title}</span>
+								<span class="hi-time">{formatTimeAgo(session.lastRead)}</span>
 							</div>
-							<span class="hi-pct">{Math.round((session.currentWord / session.totalWords) * 100)}%</span>
-						</div>
-					</button>
+							{#if session.textPreview}
+								<span class="hi-preview">{session.textPreview}</span>
+							{/if}
+							<div class="hi-bottom">
+								<div class="hi-bar">
+									<div class="hi-fill" style="width:{(session.currentWord / session.totalWords) * 100}%"></div>
+								</div>
+								<span class="hi-pct">{Math.round((session.currentWord / session.totalWords) * 100)}%</span>
+							</div>
+						</button>
+						<button class="hi-delete" title="Remove" onclick={() => { reader.deleteSession(session.textHash); history = reader.loadHistory(); }}>
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+						</button>
+					</div>
 				{/each}
 			</div>
 		</div>
@@ -320,19 +328,46 @@
 		display: flex; flex-direction: column; gap: 0.4rem;
 	}
 
+	.history-head { display: flex; justify-content: space-between; align-items: center; }
+	.history-clear {
+		all: unset; cursor: pointer;
+		font-size: 0.6rem; color: var(--text-4);
+		padding: 0.2rem 0.5rem; border-radius: 6px;
+		transition: all var(--dur) var(--ease);
+	}
+	.history-clear:hover { color: var(--text-2); background: var(--surface); }
+
 	.history-list { display: flex; flex-direction: column; gap: 0.35rem; }
 
 	.history-item {
-		all: unset; cursor: pointer;
-		padding: 0.6rem 0.8rem;
+		position: relative;
 		border-radius: 12px;
 		border: 1px solid var(--border);
 		background: var(--surface);
-		display: flex; flex-direction: column; gap: 0.3rem;
+		display: flex; align-items: stretch;
 		transition: all var(--dur) var(--ease);
 	}
 	.history-item:hover { border-color: var(--border-h); background: var(--surface-h); transform: translateY(-1px); }
 	.history-item:active { transform: scale(0.99); }
+
+	.hi-content {
+		all: unset; cursor: pointer;
+		flex: 1; padding: 0.6rem 0.8rem;
+		display: flex; flex-direction: column; gap: 0.3rem;
+		min-width: 0;
+	}
+
+	.hi-delete {
+		all: unset; cursor: pointer;
+		display: flex; align-items: center; justify-content: center;
+		padding: 0 0.6rem;
+		color: var(--text-5);
+		border-left: 1px solid var(--border);
+		transition: all var(--dur) var(--ease);
+		opacity: 0;
+	}
+	.history-item:hover .hi-delete { opacity: 1; }
+	.hi-delete:hover { color: var(--text-2); background: var(--surface-h); border-radius: 0 12px 12px 0; }
 
 	.hi-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 	.hi-title { font-size: 0.8rem; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
