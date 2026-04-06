@@ -59,7 +59,9 @@
 		if (e.target instanceof HTMLSelectElement) return;
 
 		switch (e.key) {
-			case 'ArrowRight': case ' ': case 'j':
+			case ' ':
+				e.preventDefault(); reader.toggle(); break;
+			case 'ArrowRight': case 'j':
 				e.preventDefault(); reader.advance(); break;
 			case 'ArrowLeft': case 'k':
 				e.preventDefault(); reader.goBack(); break;
@@ -76,7 +78,7 @@
 				break;
 			}
 			case 'p': e.preventDefault(); reader.toggle(); break;
-			case 's': e.preventDefault(); reader.isSpeaking ? reader.stop() : reader.play(); break;
+			case 's': e.preventDefault(); reader.toggleSpeech(); break;
 			case '+': case '=':
 				e.preventDefault(); reader.settings.wpm = Math.min(600, reader.settings.wpm + 20);
 				reader.saveSettings(); if (reader.isSpeaking) reader.restartSpeech(); break;
@@ -429,7 +431,7 @@
 
 	.settings-panel-standalone {
 		width: min(88vw, 340px);
-		height: 100%;
+		height: 100dvh;
 		background: var(--glass);
 		backdrop-filter: blur(30px) saturate(1.4);
 		-webkit-backdrop-filter: blur(30px) saturate(1.4);
@@ -445,7 +447,7 @@
 
 	.sp-head {
 		display: flex; align-items: center; justify-content: space-between;
-		padding: 0.9rem 1rem 0.6rem;
+		padding: max(0.9rem, env(safe-area-inset-top, 0px)) 1rem 0.6rem;
 	}
 
 	.sp-title { color: var(--text); font-size: 0.85rem; font-weight: 600; }
@@ -463,7 +465,8 @@
 		flex: 1;
 		overflow-y: auto;
 		scrollbar-width: thin;
-		padding: 0.3rem 1rem 2rem;
+		padding: 0.3rem 1rem calc(2rem + env(safe-area-inset-bottom, 0px));
+		-webkit-overflow-scrolling: touch;
 	}
 	.sp-body::-webkit-scrollbar { width: 3px; }
 	.sp-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }

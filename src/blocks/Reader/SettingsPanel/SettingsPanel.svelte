@@ -204,9 +204,10 @@
 	/* ── Voice ── */
 	.vr { display: flex; gap: 0.35rem; }
 	.vr select {
-		flex: 1; background: var(--surface); border: 1px solid var(--border);
+		flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border);
 		color: var(--text-2); padding: 0.45rem 0.6rem; border-radius: 9px;
 		font-size: 0.78rem; outline: none;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	}
 	.vp {
 		all: unset; cursor: pointer;

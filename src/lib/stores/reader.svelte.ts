@@ -179,7 +179,7 @@ export interface Section {
 	level: number;
 }
 
-export type ThemeId = 'auto' | 'light' | 'dark' | 'sepia' | 'midnight' | 'oled';
+export type ThemeId = 'auto' | 'light' | 'dark' | 'sepia' | 'midnight' | 'oled' | 'neon';
 
 export const THEMES: { id: ThemeId; label: string; preview: string }[] = [
 	{ id: 'auto', label: 'Auto', preview: 'linear-gradient(160deg, #e8e8e8 40%, #3a3a3a 60%)' },
@@ -187,7 +187,8 @@ export const THEMES: { id: ThemeId; label: string; preview: string }[] = [
 	{ id: 'dark', label: 'Dark', preview: '#222222' },
 	{ id: 'sepia', label: 'Sepia', preview: '#ece5d5' },
 	{ id: 'midnight', label: 'Night', preview: '#14142a' },
-	{ id: 'oled', label: 'OLED', preview: '#000000' }
+	{ id: 'oled', label: 'OLED', preview: '#000000' },
+	{ id: 'neon', label: 'Neon', preview: '#00ffc8' }
 ];
 
 export interface ReaderSettings {
@@ -282,14 +283,12 @@ function loadSettings(): ReaderSettings {
 // ─── Playback modes ──────────────────────────────────────────────────────────
 //
 // SPEECH mode (default when speech is available):
-//   Speech plays audio. onboundary fires a simple COUNTER — each "word"
-//   boundary increments the counter. currentWord = startWord + counter.
-//   No charIndex mapping. If onboundary doesn't fire within 1.5s,
-//   automatically falls back to TIMER mode.
+//   Speech drives word advancement via sequential onboundary counting.
+//   Each boundary event = next word. No charIndex (unreliable on Edge).
+//   Falls back to TIMER mode if onboundary doesn't fire within 1.5s.
 //
 // TIMER mode (fallback):
-//   setInterval at WPM rate advances currentWord.
-//   No speech involvement.
+//   setInterval at WPM rate advances currentWord. No speech.
 //
 // Only ONE mode runs at a time. Never both.
 
@@ -323,6 +322,7 @@ class ReaderState {
 	private pauseTimer: ReturnType<typeof setTimeout> | null = null;
 	private keepAlive: ReturnType<typeof setInterval> | null = null;
 	private fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+
 	private speechGen = 0; // generation counter to ignore stale events
 
 	// ── Derived ───────────────────────────────────────────────────────────
@@ -546,7 +546,7 @@ class ReaderState {
 		this.rampStartWord = this.currentWord;
 		if (this.readingStartTime === 0) this.startSession();
 
-		// Try speech mode. Falls back to timer if onboundary doesn't fire.
+		// Try speech mode; falls back to timer if onboundary doesn't fire
 		this.startSpeechMode(this.currentWord);
 	}
 
@@ -575,16 +575,30 @@ class ReaderState {
 		this.isPlaying ? this.pause() : this.play();
 	}
 
+	toggleSpeech() {
+		if (this.isSpeaking) {
+			this.stopSpeech();
+			if (this.isPlaying) this.startTimerMode();
+		} else {
+			if (this.isPlaying) this.stopTimer();
+			this.startSpeechMode(this.currentWord);
+			if (!this.isPlaying) {
+				this.isPlaying = true;
+				if (this.readingStartTime === 0) this.startSession();
+			}
+		}
+	}
+
 	restartSpeech() {
 		if (!this.isPlaying) return;
 		this.startSpeechMode(this.currentWord);
 	}
 
-	// ── Speech mode ───────────────────────────────────────────────────────
+	// ── Speech mode ──────────────────────────────────────────────────────
 	//
-	// Uses charIndex from onboundary to find which of OUR words the
-	// speech engine is currently on. Forward-only guard prevents drift.
-	// Falls back to timer if onboundary never fires.
+	// Speech drives word advancement via sequential onboundary counting.
+	// No charIndex — just count word boundary events (works across all browsers).
+	// Falls back to timer if onboundary doesn't fire within 1.5s.
 
 	private static SPEECH_CHUNK = 150;
 
@@ -609,14 +623,12 @@ class ReaderState {
 	private startSpeechMode(fromWord: number) {
 		this.stopTimer();
 		this.stopSpeech();
-		this.clearFallback();
 
 		if (typeof window === 'undefined' || !window.speechSynthesis) {
 			this.startTimerMode();
 			return;
 		}
 
-		// Only speak a chunk, not the entire book
 		const chunkEnd = Math.min(fromWord + ReaderState.SPEECH_CHUNK, this.totalWords);
 		const words = this.allWords.slice(fromWord, chunkEnd);
 		if (words.length === 0) {
@@ -628,22 +640,13 @@ class ReaderState {
 		const gen = this.speechGen;
 		const baseWord = fromWord;
 		let gotFirstBoundary = false;
+		let boundaryCount = 0;
 
-		const wordTexts = words.map((w) => w.text);
-		const text = wordTexts.join(' ');
-
-		const charStarts: number[] = [];
-		let pos = 0;
-		for (const wt of wordTexts) {
-			charStarts.push(pos);
-			pos += wt.length + 1;
-		}
+		const text = words.map((w) => w.text).join(' ');
 
 		const utterance = new SpeechSynthesisUtterance(text);
 		const baseLang = this.detectedLang.split('-')[0];
 		const langRate = ReaderState.LANG_RATE[baseLang] ?? 1.0;
-		// Use logarithmic scaling for more natural feel at extreme WPM values
-		// 180 wpm = rate 1.0, 360 wpm = rate 1.7 (not 2.0), 60 wpm = rate 0.5
 		const rawRate = this.settings.wpm / 180;
 		const smoothRate = rawRate <= 1 ? rawRate : 1 + Math.log2(rawRate);
 		utterance.rate = Math.max(0.3, Math.min(2.5, smoothRate * langRate));
@@ -668,20 +671,10 @@ class ReaderState {
 				this.clearFallback();
 			}
 
-			const searchFrom = Math.max(0, this.currentWord - baseWord);
-			let bestIdx = searchFrom;
-			let bestDist = Math.abs(charStarts[searchFrom] - e.charIndex);
+			// Sequential count — each word boundary = next word. No charIndex.
+			const target = baseWord + boundaryCount;
+			boundaryCount++;
 
-			for (let i = searchFrom + 1; i < charStarts.length; i++) {
-				const dist = Math.abs(charStarts[i] - e.charIndex);
-				if (dist < bestDist) {
-					bestDist = dist;
-					bestIdx = i;
-				}
-				if (charStarts[i] > e.charIndex + 10) break;
-			}
-
-			const target = baseWord + bestIdx;
 			if (target >= this.currentWord && target < this.totalWords) {
 				const delta = target - this.currentWord;
 				this.wordsReadThisSession += delta;
@@ -693,11 +686,9 @@ class ReaderState {
 		utterance.onend = () => {
 			if (gen !== this.speechGen) return;
 			this.clearKeepAlive();
-			// Chain next chunk if there's more text
-			const nextWord = Math.min(baseWord + words.length, this.totalWords - 1);
-			if (this.isPlaying && nextWord > this.currentWord && nextWord < this.totalWords) {
-				this.currentWord = nextWord;
-				this.wordsReadThisSession += nextWord - baseWord;
+			const nextWord = baseWord + words.length;
+			if (this.isPlaying && nextWord < this.totalWords) {
+				this.currentWord = Math.max(this.currentWord, nextWord);
 				this.startSpeechMode(this.currentWord);
 			} else {
 				this.isSpeaking = false;
@@ -724,15 +715,25 @@ class ReaderState {
 			}
 		}, 10000);
 
+		// Fallback: if no boundary fires within 1.5s, switch to timer mode
 		this.fallbackTimeout = setTimeout(() => {
 			if (gen !== this.speechGen) return;
 			if (!gotFirstBoundary && this.isPlaying) {
+				this.isSpeaking = false;
+				this.stopSpeech();
 				this.startTimerMode();
 			}
 		}, 1500);
 	}
 
-	// ── Timer mode (fallback) ─────────────────────────────────────────────
+	private clearFallback() {
+		if (this.fallbackTimeout) {
+			clearTimeout(this.fallbackTimeout);
+			this.fallbackTimeout = null;
+		}
+	}
+
+	// ── Timer mode (fallback when speech boundaries don't fire) ──────────
 
 	private startTimerMode() {
 		this.stopTimer();
@@ -789,12 +790,6 @@ class ReaderState {
 		}
 	}
 
-	private clearFallback() {
-		if (this.fallbackTimeout) {
-			clearTimeout(this.fallbackTimeout);
-			this.fallbackTimeout = null;
-		}
-	}
 
 	private stopSpeech() {
 		this.isSpeaking = false;

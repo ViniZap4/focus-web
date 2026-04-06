@@ -134,7 +134,7 @@
 <style>
 	.bar {
 		position: fixed;
-		bottom: 1.25rem;
+		bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
 		left: 50%;
 		transform: translateX(-50%);
 		width: min(94vw, 520px);
@@ -161,12 +161,13 @@
 
 	/* ── Progress scrubber ─────────────────────────── */
 	.prog {
-		height: 4px;
+		height: 6px;
 		background: var(--surface);
 		cursor: pointer;
 		transition: height 0.2s var(--ease);
+		touch-action: none;
 	}
-	.prog:hover, .prog.scrubbing { height: 8px; }
+	.prog:hover, .prog.scrubbing { height: 10px; }
 	.prog-fill {
 		height: 100%;
 		background: var(--text-3);
@@ -267,5 +268,10 @@
 		padding: 0 0.15rem;
 	}
 
+	@media (max-width: 440px) {
+		.meta { display: none; }
+		.mode-tag { display: none; }
+		.main { padding: 0.35rem 0.4rem; }
+	}
 
 </style>

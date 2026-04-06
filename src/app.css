@@ -114,6 +114,27 @@
 	color-scheme: dark;
 }
 
+/* ─── Neon ───────────────────────────────────────────────────── */
+[data-theme='neon'] {
+	--bg: #0a0a12;
+	--bg-t: rgba(10, 10, 18, 0);
+	--text: rgba(0, 255, 200, 0.9);
+	--text-2: rgba(0, 255, 200, 0.5);
+	--text-3: rgba(0, 255, 200, 0.25);
+	--text-4: rgba(0, 255, 200, 0.12);
+	--text-5: rgba(0, 255, 200, 0.06);
+	--surface: rgba(0, 255, 200, 0.05);
+	--surface-h: rgba(0, 255, 200, 0.08);
+	--surface-a: rgba(0, 255, 200, 0.12);
+	--border: rgba(0, 255, 200, 0.08);
+	--border-h: rgba(0, 255, 200, 0.16);
+	--glass: rgba(10, 10, 18, 0.9);
+	--shadow-sm: 0 2px 12px rgba(0, 255, 200, 0.08);
+	--shadow-lg: 0 12px 48px rgba(0, 255, 200, 0.12);
+	--error: #ff3366;
+	color-scheme: dark;
+}
+
 /* ─── Auto (system preference) ────────────────────────────────── */
 [data-theme='auto'] {
 	color-scheme: light dark;
@@ -166,7 +187,7 @@
 body {
 	margin: 0;
 	min-width: 320px;
-	min-height: 100vh;
+	min-height: 100dvh;
 	transition:
 		background-color var(--dur-slow) var(--ease),
 		color var(--dur) var(--ease);
@@ -174,6 +195,13 @@ body {
 
 ::selection {
 	background: var(--surface-a);
+}
+
+/* ─── Mobile ─────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+	button, a, [role="slider"] {
+		-webkit-tap-highlight-color: transparent;
+	}
 }
 
 /* ─── Reduced motion ─────────────────────────────────────────── */
